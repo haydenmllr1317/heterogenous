@@ -5,7 +5,9 @@ Also defined is the message type used by this implementation.
 Entanglement generation is asymmetric:
 
 * EntanglementGenerationA should be used on the QuantumRouter (with one node set as the primary) and should be started via the "start" method
-* EntanglementGeneraitonB should be used on the BSMNode and does not need to be started
+* EntanglementGenerationB should be used on the BSMNode and does not need to be started
+* EntanglementGenerationB should be used on the QuantumRoute (with on enode set as the primary) and should be started via the "start" method,
+    it is the analog to EntanglementGenerationA, but with time_bin photons
 """
 
 from __future__ import annotations
@@ -47,8 +49,27 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
         name (str): label for protocol instance.
         middle (str): name of BSM measurement node where emitted photons should be directed.
         remote_node_name (str): name of distant QuantumRouter node, containing a memory to be entangled with local memory.
+        remote_protocol_name (str): name of protocol on remote node
         memory (Memory): quantum memory object to attempt entanglement for.
-        encoding_type: type of encoding for photons
+        remote_memo_id (str): memory index used by corresponding protocol on
+            other node
+        fidelity(float): fidelity of memory protocol is attached to
+        qc_delay(int): delay in quantum channel between node this protocol
+            is on and the 'middle' node
+        expected_time (int): expected time at which a 'late' photon would be
+            detected
+        ent_round (int): which round of enanglement we are on, as this is single
+            heralded, there are only two rounds - entanglement and correction
+        psi_sign (int): 0 if we have psi+, 1 if we have psi-, -1 if nothing
+        last_res (List[int]): two element list, first element is the last time
+            of a detector occurance, and the second is which detector was hit
+        scheduled_events (List[Event]): list of future scheduled Event objects
+        primary (bool): True if is unique primary node that initiates
+            negotiations, False else
+        _qstate_key (int): key from quantum manager for memory qubit state
+        encoding_type (str): type of encoding for photons, set to "time_bin"
+        photon_bin_separation (int): temporal separation between early and late
+            photons, as specified in 'encoding' module under time_bin
     """
 
     _plus_state = [sqrt(1/2), sqrt(1/2)]
@@ -57,7 +78,7 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
     _z_circuit = Circuit(1)
     _z_circuit.z(0)
 
-    def __init__(self, owner: "Node", name: str, middle: str, other: str, memory: "Memory", encoding_type: str):
+    def __init__(self, owner: "Node", name: str, middle: str, other: str, memory: "Memory"):
         """Constructor for entanglement generation A class.
 
         Args:
@@ -66,7 +87,6 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
             middle (str): name of middle measurement node.
             other (str): name of other node.
             memory (Memory): memory to entangle.
-            encoding_type: photon encoding type
         """
 
         super().__init__(owner, name)
@@ -76,7 +96,6 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
 
         # memory info
         self.memory: Memory = memory
-        self.memories: List[Memory] = [memory]
         self.remote_memo_id: str = ""  # memory index used by corresponding protocol on other node
 
         # network and hardware info
@@ -88,19 +107,15 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
         self.ent_round = 0  # keep track of current stage of protocol
         self.psi_sign = -1
         self.last_res = [0,-1]  # keep track of bsm measurements to distinguish Psi+ and Psi-
-        # NOTE: I changed the above to last_res from bsm_res and it now is such that
-        # the last index is -1 (which detector is hit) and the first is the time
-        # that it hit at
 
         self.scheduled_events = []
 
         # misc
         self.primary: bool = False  # one end node is the "primary" that initiates negotiation
-        self.debug: bool = False
 
         self._qstate_key: int = self.memory.qstate_key
 
-        self.encoding_type: str = encoding_type
+        self.encoding_type: str = 'time_bin'
         self.photon_bin_separation = time_bin['bin_separation']
         
 
@@ -166,7 +181,6 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
         
         elif self.ent_round == 2 and self.psi_sign != -1:
             # entanglement succeeded, correction
-            self.owner.succeed += 1
             if self.psi_sign == 1:
                 self.owner.timeline.quantum_manager.run_circuit(EntanglementGenerationTimeBin._z_circuit, [self._qstate_key])
             self._entanglement_succeed()
@@ -174,7 +188,6 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
 
         else:
             # entanglement failed
-            self.owner.fail += 1
             if self.ent_round != 2: raise ValueError('Ent Round should be 2 but is' + str(self.ent_round))
             self._entanglement_fail()
 
@@ -193,13 +206,10 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
             May cause attached memory to emit photon.
         """
 
-        # NOTE: WE DONT NEED THIS AS THERE SHOULD ONLY BE 1 ROUND TOTAL
         if self.ent_round == 1:
             self.memory.update_state(EntanglementGenerationTimeBin._plus_state)
         else: raise ValueError('Entanglement protocol isn\'t single-heralded as desired.')
-        # NOTE: CHANGING HERE, AS WE WANT EXCITE TO KNOW THE ENCODING TYPE
         self.memory.excite(self.encoding_type, self.middle)
-        # NOTE: END OF CHANGES
 
     def received_message(self, src: str, msg: EntanglementGenerationMessage) -> None:
         """Method to receive messages.
@@ -234,7 +244,7 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
             memory_excite_time = self.memory.next_excite_time
             min_time = max(self.owner.timeline.now(), memory_excite_time) + total_quantum_delay - self.qc_delay + cc_delay  # cc_delay time for NEGOTIATE_ACK
             emit_time = self.owner.schedule_qubit(self.middle, min_time)  # used to send memory
-            self.expected_time = emit_time + self.qc_delay + self.photon_bin_separation  # NOTE: added bin_separation as may have a late time photon
+            self.expected_time = emit_time + self.qc_delay + self.photon_bin_separation  # need to be prepared for worst case scenario - a late photon
 
             # schedule emit
             process = Process(self, "emit_event", [])
@@ -259,7 +269,7 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
         elif msg_type is GenerationMsgType.NEGOTIATE_ACK:  # non-primary --> primary
             # configure params
             self.expected_time = msg.emit_time + self.qc_delay + self.photon_bin_separation  # expected time for middle BSM node to receive the photon
-            # NOTE: include bin_separation above as need to consider getting a photon in the 'late' state
+            # we include photon_bin_separation above as need to consider getting a photon in the 'late' state
 
             if msg.emit_time < self.owner.timeline.now():  # emit time calculated by the non-primary node
                 msg.emit_time = self.owner.timeline.now()
@@ -283,17 +293,14 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
             self.scheduled_events.append(event)
 
         elif msg_type is GenerationMsgType.MEAS_RES:  # from middle BSM to both non-primary and primary
-            detector = msg.detector
+            sign = msg.detector # 0 if same detectors (psi+), 1 if different (psi-)
             time = msg.time
             resolution = msg.resolution
 
             log.logger.debug("{} received MEAS_RES={} at time={:,}, expected={:,}, resolution={}, round={}".format(
-                             self.owner.name, detector, time, self.expected_time, resolution, self.ent_round))
+                             self.owner.name, sign, time, self.expected_time, resolution, self.ent_round))
             if valid_trigger_time(time, self.expected_time, resolution):      
-                #NOTE: I completily reqrote this for simplicity as we only care
-                #      which psi we have so we can update the state
-                self.psi_sign = detector
-                #NOTE: END OF CHANGES 
+                self.psi_sign = sign 
             else:
                 log.logger.debug('{} BSM trigger time not valid'.format(self.owner.name))
 

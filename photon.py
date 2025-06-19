@@ -184,5 +184,4 @@ class Photon:
 
     def add_loss(self, loss: float):
         assert 0 <= loss <= 1
-        # assert self.encoding_type.get("keep_photon", False) # NOTE: CHANGED THIS AS ISN'T IN TIMEBIN ENCODING
         self.loss = 1 - (1 - self.loss) * (1 - loss)

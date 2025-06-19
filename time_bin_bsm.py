@@ -24,12 +24,9 @@ from sequence.kernel.process import Process
 from sequence.kernel.quantum_manager import KET_STATE_FORMALISM, DENSITY_MATRIX_FORMALISM
 from encoding import *
 from sequence.utils import log
-from sequence.components.bsm import BSM, _set_state_with_fidelity
+from sequence.components.bsm import _set_state_with_fidelity
 
 
-
-# BSM class is same as in SeQUeNCE, just have it here as it helps to bug check
-# via logging and print statement etc
 class BSM(Entity):
     """Parent class for bell state measurement devices.
 
@@ -133,7 +130,6 @@ class BSM(Entity):
         for detector in self.detectors:
             detector.__setattr__(arg_name, value)
 
-# altered from SeQUeNCE version, changes have 'NOTE' by them
 class TimeBinBSM(BSM):
     """Class modeling a time bin BSM device.
 
@@ -143,6 +139,36 @@ class TimeBinBSM(BSM):
         name (str): label for BSM instance
         timeline (Timeline): timeline for simulation
         detectors (List[Detector]): list of attached photon detection devices
+        phase_error (float): phase error applied to polarization qubits (unused)
+        encoding(float): 'time_bin', used in 'BSM' class to ensure recieved
+            photon is of the same encoding type
+        last_res (List[Int]): pair of ints, initially set to [-1,-1], where the
+            first int is the time of the last time 'trigger' was called and the
+            second int is the detector (0 or 1) that caused said trigger
+        early_early (int): total count of photon pairs the device measured as
+            both being early
+        early_late (int): total count of photon pairs the device measured as
+            photon1 being early and photon2 being late
+        late_early (int): total count of photon pairs the device measured as
+            photon2 being late and photon2 being early
+        late_late (int): total count of photon pairs the device measured as
+            both being late
+        desired_state (bool): true if photons are |early,late> or |late,early>,
+            else false
+        trigger_count (int): count how many times trigger function was called
+        appropriate_time_photon_count (int): counts how many photons cause a
+            trigger at roughly the bin_separation time from the previous photon
+            arrival. this should only be the late photons in an early+late pair
+        approved_state_invalid_time_photon_count (int): counts how many photons
+            that come from an early+late pair (valid) arrive at an invalid time,
+            meaning not a bin_separation time away from the previous photon.
+            this should only be the early photons in said pairs.
+        invalid_state_photon_count (int): counts how many photons that come from
+            an invalid pair (late+late or early+early) arrive at an invalid
+            time. this should be half of them, as the detector can register
+            one photon at a time and they will arrive at the same time and same
+            detector (by HOM effect).
+
     """
 
     _meas_circuit = Circuit(1)
@@ -159,36 +185,26 @@ class TimeBinBSM(BSM):
                 in dictionary format (must be of length 2) (default None).
         """
 
-        # NOTE: create a empty list of dictionaries for compatability with
-        #       with BSM class
         if detectors is None:
             detectors = [{}, {}]
-        # NOTE: END OF CHANGES
 
         super().__init__(name, timeline, phase_error, detectors)
-        self.encoding = "time_bin"
-        self.encoding_type = time_bin
-        self.last_res = [-1, -1]
 
-        # NOTE: al stupid bug checking constants
-        self.ee = 0
-        self.el = 0
-        self.le = 0
-        self.ll = 0
-        self.current = -1
-        self.wrongs = 0
-        self.throw_aways = 0
-        self.triggered = 0
-        self.got_right_away = 0
-        self.got_later = 0
-        self.nada = -1
-        self.good_ones = 0
+        self.encoding = 'time_bin'
+        self.last_res = [-1, -1]
+        self.early_early = 0
+        self.early_late = 0
+        self.late_early = 0
+        self.late_late = 0
+        self.desired_state = None
+        self.trigger_count = 0
+        self.appropriate_time_photon_count = 0
+        self.approved_state_invalid_time_photon_count = 0
+        self.invalid_state_photon_count = 0
         
-        # NOTE: added just to make sure
+        # for our BSM setup...
         assert len(self.detectors) == 2
 
-    # NOTE: this is just entirely different, modeled more off of SingleAtomBSM
-    #       class
     def get(self, photon, **kwargs):
         """See base class.
 
@@ -207,37 +223,32 @@ class TimeBinBSM(BSM):
             p0, p1 = self.photons
             key0, key1 = p0.quantum_state, p1.quantum_state
             keys = [key0, key1]
-            state0, state1 = qm.get(key0), qm.get(key1)
+            # measurement results here are considered in the {early,late} basis
             meas0, meas1 = [qm.run_circuit(self._meas_circuit, [key], self.get_generator().random())[key]
                             for key in keys]
-            # NOTE: results of meas0,meas1 are thought of as in the E,L basis
             
             log.logger.debug(self.name + " measured photons as {}, {}".format(meas0,meas1))
 
-            late_time = self.timeline.now() + self.encoding_type["bin_separation"]
+            late_time = self.timeline.now() + time_bin["bin_separation"]
 
             if (not meas0) and (not meas1):
-                self.ee += 1
-                self.current = 0
-                self.nada = 1
+                self.early_early += 1
+                self.desired_state = False
                 # HOM interference gives same detector
                 detector_num = self.get_generator().choice([0,1])
                 if self.get_generator().random() > p0.loss:
-                    self.got_right_away +=1
                     self.detectors[detector_num].get()
                 else:
                     log.logger.info(f'{self.name} lost photon p0')
 
                 if self.get_generator().random() > p1.loss:
-                    self.got_right_away +=1
                     self.detectors[detector_num].get()
                 else:
                     log.logger.info(f'{self.name} lost photon p1')
             
             elif (not meas0) and meas1:
-                self.el += 1
-                self.current = 1
-                self.nada = 0
+                self.early_late += 1
+                self.desired_state = True
                 detector_num1 = self.get_generator().choice([0,1])
                 detector_num2 = self.get_generator().choice([0,1])
                 if detector_num1 == detector_num2:
@@ -247,12 +258,10 @@ class TimeBinBSM(BSM):
                     _set_state_with_fidelity(keys, BSM._psi_minus, p0.encoding_type["raw_fidelity"],
                     self.get_generator(), qm)
                 if self.get_generator().random() > p0.loss:
-                    self.got_right_away +=1
                     self.detectors[detector_num1].get()
                 else:
                     log.logger.info(f'{self.name} lost photon p0')
                 if self.get_generator().random() > p1.loss:
-                    self.got_later +=1
                     process = Process(self.detectors[detector_num2], "get", [])
                     event = Event(int(round(late_time)), process)
                     self.timeline.schedule(event)
@@ -260,9 +269,8 @@ class TimeBinBSM(BSM):
                     log.logger.info(f'{self.name} lost photon p1')
 
             elif meas0 and (not meas1):
-                self.le += 1
-                self.nada = 0
-                self.current = 1
+                self.late_early += 1
+                self.desired_state = True
                 detector_num1 = self.get_generator().choice([0,1])
                 detector_num2 = self.get_generator().choice([0,1])
                 if detector_num1 == detector_num2:
@@ -272,33 +280,28 @@ class TimeBinBSM(BSM):
                     _set_state_with_fidelity(keys, BSM._psi_minus, p0.encoding_type["raw_fidelity"],
                     self.get_generator(), qm)
                 if self.get_generator().random() > p0.loss:
-                    self.got_later +=1
                     process = Process(self.detectors[detector_num1], "get", [])
                     event = Event(int(round(late_time)), process)
                     self.timeline.schedule(event)
                 else:
                     log.logger.info(f'{self.name} lost photon p0')
                 if self.get_generator().random() > p1.loss:
-                    self.got_right_away +=1
                     self.detectors[detector_num2].get()
                 else:
                     log.logger.info(f'{self.name} lost photon p1')
 
             elif meas0 and meas1:
-                self.ll +=1
-                self.current = 0
-                self.nada = 0
+                self.late_late +=1
+                self.desired_state = False
                 # HOM interference gives same detector
                 detector_num = self.get_generator().choice([0,1])
                 if self.get_generator().random() > p0.loss:
-                    self.got_later +=1
                     process = Process(self.detectors[detector_num], "get", [])
                     event = Event(int(round(late_time)), process)
                     self.timeline.schedule(event)
                 else:
                     log.logger.info(f'{self.name} lost photon p0')
                 if self.get_generator().random() > p1.loss:
-                    self.got_later +=1
                     process = Process(self.detectors[detector_num], "get", [])
                     event = Event(int(round(late_time)), process)
                     self.timeline.schedule(event)
@@ -308,7 +311,7 @@ class TimeBinBSM(BSM):
 
     # this class should call self.notify(info) only if the photon
     #   that caused the trigger event was the second photon in a 
-    #   pair that was in one of the approved |EL> or |LE> states
+    #   pair that was in one of the approved |early,late> or |late,early> states
     def trigger(self, detector: Detector, info: Dict[str, Any]):
         """See base class.
 
@@ -318,17 +321,20 @@ class TimeBinBSM(BSM):
             May send a further message to any attached entities.
         """
 
-        self.triggered += 1
-
+        self.trigger_count += 1
         detector_num = self.detectors.index(detector)
         time = info["time"]
 
         # check if valid time
-        if round((time - self.last_res[0]) / self.encoding_type["bin_separation"]) == 1:
-            if (not self.current): raise ValueError('ee or ll slipt through')
+        if round((time - self.last_res[0]) / time_bin["bin_separation"]) == 1:
+            if (not self.desired_state):
+                # an 'undesired state' is one that is either |early,early>
+                #   or |late,late>. thus the photons' timing should be
+                #   negligible compared to the bin_separation
+                log.logger.error('An undesired state had correct timing.')
 
+            self.appropriate_time_photon_count += 1
             # Psi+
-            self.good_ones += 1
             if detector_num == self.last_res[1]:
                 info = {'entity': 'BSM', 'info_type': 'BSM_res', 'res': 0, 'time': time}
                 self.notify(info)
@@ -336,9 +342,15 @@ class TimeBinBSM(BSM):
             else:
                 info = {'entity': 'BSM', 'info_type': 'BSM_res', 'res': 1, 'time': time}
                 self.notify(info)
-        elif self.current:
-            self.wrongs += 1
-        elif (not self.current):
-            self.throw_aways += 1
+        elif self.desired_state:
+            # an approved states is either |early,late> or |late,early>. the
+            #   early photon should always have invalid time, but late one
+            #   shouldn't. the counter below should equal
+            #   self.appropriately_timed_photon_count
+            self.approved_state_invalid_time_photon_count +=1
+        elif (not self.desired_state):
+            # an invalid state (|early,early> or |late,late>), correctly
+            #   had invalid timing
+            self.invalid_state_photon_count += 1
 
         self.last_res = [time, detector_num]

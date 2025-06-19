@@ -127,9 +127,8 @@ class Memory(Entity):
         # for photons in general single-heralded EG protocols
         self.encoding_sh = copy(single_heralded)
 
-        # NOTE: CHANGING TO ADD TIMEBIN PHOTONS
+        # for photons with encoding type of time_bin
         self.encoding_tb = copy(time_bin)
-        # NOTE: END OF CHANGES
 
         # keep track of previous BSM result (for entanglement generation)
         # -1 = no result, 0/1 give detector number
@@ -150,7 +149,7 @@ class Memory(Entity):
     def set_memory_array(self, memory_array: MemoryArray):
         self.memory_array = memory_array
 
-    def excite(self, encoding_type, dst="", protocol="bk") -> None: # NOTE: I CHANGED THIS TO CONSUME ENCODING TYPE
+    def excite(self, encoding_type, dst="", protocol="bk") -> None:
         """Method to excite memory and potentially emit a photon.
 
         If it is possible to emit a photon, the photon may be marked as null based on the state of the memory.
@@ -169,23 +168,21 @@ class Memory(Entity):
             return
 
         # create photon
-        if protocol == "bk" and encoding_type != "time_bin": # NOTE: ADDED NOT TIME BIN TO SEPARATE LOGIC
+        if protocol == "bk" and encoding_type != "time_bin":
             photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding,
                             quantum_state=self.qstate_key, use_qm=True)
-        elif protocol == "sh" and encoding_type != "time_bin": # NOTE: ADDED NOT TIME BIN TO SEPARATE LOGIC
+        elif protocol == "sh" and encoding_type != "time_bin":
             photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding_sh, 
                             quantum_state=self.qstate_key, use_qm=True)
             # keep track of initialization time
             self.generation_time = self.timeline.now()
             self.last_update_time = self.timeline.now()
-        # NOTE: ADDING COMPATABILITY FOR TIMEBIN
         elif encoding_type == "time_bin":
             photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding_tb, 
             quantum_state=self.qstate_key, use_qm=True)
             # keep track of memory initialization time
             self.generation_time = self.timeline.now()
             self.last_update_time = self.timeline.now()
-        # NOTE: END OF CHANGES
         else:
             raise ValueError("Invalid protocol type {} specified for memory.exite()".format(protocol))
 

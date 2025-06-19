@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 from sequence.kernel.entity import Entity, ClassicalEntity
 from sequence.components.memory import MemoryArray
-from bsm import BSM, TimeBinBSM
+from time_bin_bsm import BSM, TimeBinBSM
 from sequence.components.light_source import LightSource
 from detector import Detector
 from sequence.qkd.BB84 import BB84
@@ -73,13 +73,9 @@ class BSMNode(Node):
         elif self.encoding_type == 'single_heralded':
             bsm_args = component_templates.get("SingleHeraldedBSM", {})
             bsm = SingleHeraldedBSM(bsm_name, timeline, **bsm_args)
-
-        # NOTE: CHANGES
         elif self.encoding_type == 'time_bin':
             bsm_args = component_templates.get("TimeBinBSM", {})
             bsm = TimeBinBSM(bsm_name, timeline, **bsm_args)
-        # NOTE: CHANGES END
-
         else:
             raise ValueError(f'Encoding type {self.encoding_type} not supported')
 

@@ -1,11 +1,3 @@
-"""
-
-This file is unchanged from SeQUeNCE's detector file except for logging
-and print statements.
-
-"""
-
-
 """Models for photon detection devices.
 
 This module models a single photon detector (SPD) for measurement of individual photons.
@@ -48,7 +40,13 @@ class Detector(Entity):
         dark_count (float): average number of false positive detections per second.
         count_rate (float): maximum detection rate; defines detector cooldown time.
         time_resolution (int): minimum resolving power of photon arrival time (in ps).
+        next_detection_count (int): ps's until detector is capable of recording
+            another detection
         photon_counter (int): counts number of detection events.
+        recorded_detection_count (int): counts number of detection events
+            recorded (as opposed to lost due to detector efficiency)
+        undetectable_photon_count (int): counts number of photons arriving
+            prior to self.next_detection_time
     """
 
     _meas_circuit = Circuit(1)
@@ -62,9 +60,8 @@ class Detector(Entity):
         self.time_resolution = time_resolution  # measured in ps
         self.next_detection_time = -1
         self.photon_counter = 0
-        self.detector_records = 0
-        self.bad_time = 0
-        self.good_time = 0
+        self.recorded_detection_count = 0
+        self.undetectable_photon_count = 0
 
     def init(self):
         """Implementation of Entity interface (see base class)."""
@@ -130,16 +127,12 @@ class Detector(Entity):
         now = self.timeline.now()
 
         if now > self.next_detection_time:
-            if (not self._observers[0].current): 
-                log.logger.warning(f'HOM pair had approved time with delta of {abs(now-self.next_detection_time)}')
-            self.good_time += 1
+            self.recorded_detection_count += 1
             time = round(now / self.time_resolution) * self.time_resolution
-            self.detector_records +=1 
             self.notify({'time': time})
             self.next_detection_time = now + (1e12 / self.count_rate)  # period in ps
-
         else:
-            self.bad_time += 1
+            self.undetectable_photon_count += 1
 
     def notify(self, info: Dict[str, Any]):
         """Custom notify function (calls `trigger` method)."""

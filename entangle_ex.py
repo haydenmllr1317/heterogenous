@@ -20,16 +20,14 @@ from sequence.message import Message
 from sequence.utils import log
 
 # basic manager to get the state of memory after protocols
-# exact same as in example1, except we pass take another arg 'encoding_type'
-#   which is the encoding_type of our photons and then passes it through to
-#   the EngtanglementGenerationTimeBin call
+# exact same as in example1, except we instead create the
+#   EngtanglementGenerationTimeBin protocol
 class SimpleManager:
-    def __init__(self, owner, memo_name, encoding_type):
+    def __init__(self, owner, memo_name):
         self.owner = owner
         self.memo_name = memo_name
         self.raw_counter = 0
         self.ent_counter = 0
-        self.encoding_type = encoding_type
 
     def update(self, protocol, memory, state):
         if state == 'RAW':
@@ -40,13 +38,12 @@ class SimpleManager:
 
     def create_protocol(self, middle: str, other: str):
             self.owner.protocols = [EntanglementGenerationTimeBin(self.owner, '%s.eg' % self.owner.name, middle, other, 
-                                                            self.owner.components[self.memo_name], self.encoding_type)]
+                                                            self.owner.components[self.memo_name])]
 
 # class for the two nodes that contain the memories we seek to entangle
-# it's the exact same as in example1 except we pass encoding_type into it
-#   and pass that on to SimpleManager
+# it's the exact same as in example1
 class EntangleGenNodeTimeBin(Node):
-    def __init__(self, name: str, tl: Timeline, encoding_type: str):
+    def __init__(self, name: str, tl: Timeline):
         super().__init__(name, tl)
 
         memo_name = '%s.memo' % name
@@ -60,9 +57,7 @@ class EntangleGenNodeTimeBin(Node):
         memory.add_receiver(self)
         self.add_component(memory)
 
-        self.resource_manager = SimpleManager(self, memo_name, encoding_type)
-        self.succeed = 0
-        self.fail = 0
+        self.resource_manager = SimpleManager(self, memo_name)
 
     def init(self):
         memory = self.get_components_by_type("Memory")[0]
@@ -90,8 +85,8 @@ tl = Timeline()
 comp_temp = {'encoding_type': 'time_bin'}
 encoding_name = 'TimeBinBSM'
 
-node1 = EntangleGenNodeTimeBin('node1', tl, comp_temp['encoding_type'])
-node2 = EntangleGenNodeTimeBin('node2', tl, comp_temp['encoding_type'])
+node1 = EntangleGenNodeTimeBin('node1', tl)
+node2 = EntangleGenNodeTimeBin('node2', tl)
 
 # create our BSMNode object (it creates TimeBinBSM object based on comp_temp)
 bsm_node = BSMNode('bsm_node', tl, ['node1', 'node2'], component_templates = comp_temp)
@@ -150,27 +145,23 @@ for i in range(1000):
 
 print("node1 entangled memories : available memories")
 print(node1.resource_manager.ent_counter, ':', node1.resource_manager.raw_counter)
-
-# just lots of printing for bug checks
+print('photon measurement distribution, e = early, l = late:')
 print("ee:el:le:ll")
-print(bsm_node.components['bsm_node.BSM'].ee, ":",
-      bsm_node.components['bsm_node.BSM'].el, ":",
-      bsm_node.components['bsm_node.BSM'].le, ":",
-      bsm_node.components['bsm_node.BSM'].ll)
-print('succeed : fail')
-print(node1.succeed, ":", node1.fail)
-print(node2.succeed, ":", node2.fail)
-print('good ones: ' + str(bsm_node.components['bsm_node.BSM'].good_ones))
-print('wrongs: ' + str(bsm_node.components['bsm_node.BSM'].wrongs))
-print('throw_aways: ' + str(bsm_node.components['bsm_node.BSM'].throw_aways))
-print('total triggered: ' + str(bsm_node.components['bsm_node.BSM'].triggered))
-print('total got now :' + str(bsm_node.components['bsm_node.BSM'].got_right_away))
-print('total got later :' + str(bsm_node.components['bsm_node.BSM'].got_later))
-print('detector 1 records: ' + str(bsm_node.components['bsm_node.BSM'].detectors[0].detector_records))
-print('detector 2 records: ' + str(bsm_node.components['bsm_node.BSM'].detectors[1].detector_records))
+print(bsm_node.components['bsm_node.BSM'].early_early, ":",
+      bsm_node.components['bsm_node.BSM'].early_late, ":",
+      bsm_node.components['bsm_node.BSM'].late_early, ":",
+      bsm_node.components['bsm_node.BSM'].late_late)
+
+# the following counters are explained in time_bin_bsm file
+print('total triggered: ' + str(bsm_node.components['bsm_node.BSM'].trigger_count))
+print('appropriate time photon count: ' + str(bsm_node.components['bsm_node.BSM'].appropriate_time_photon_count))
+print('appropriate state, invalid time, photon count: ' + str(bsm_node.components['bsm_node.BSM'].approved_state_invalid_time_photon_count))
+print('invalid photon count: ' + str(bsm_node.components['bsm_node.BSM'].invalid_state_photon_count))
+
+# the following counters are explained in detector file
 print('total photons in detector 1: ' + str(bsm_node.components['bsm_node.BSM'].detectors[0].photon_counter))
 print('total photons in detector 2: ' + str(bsm_node.components['bsm_node.BSM'].detectors[1].photon_counter))
-print('total badtimes in detector 1: ' + str(bsm_node.components['bsm_node.BSM'].detectors[0].bad_time))
-print('total badtimes in detector 2: ' + str(bsm_node.components['bsm_node.BSM'].detectors[1].bad_time))
-print('total good times in detector 1: ' + str(bsm_node.components['bsm_node.BSM'].detectors[0].good_time))
-print('total good times in detector 2: ' + str(bsm_node.components['bsm_node.BSM'].detectors[1].good_time))
+print('total photons recorded in detector 1: ' + str(bsm_node.components['bsm_node.BSM'].detectors[0].recorded_detection_count))
+print('total photons recorded in detector 2: ' + str(bsm_node.components['bsm_node.BSM'].detectors[1].recorded_detection_count))
+print('total photons undetectable in detector 1: ' + str(bsm_node.components['bsm_node.BSM'].detectors[0].undetectable_photon_count))
+print('total photons undetectable in detector 2: ' + str(bsm_node.components['bsm_node.BSM'].detectors[1].undetectable_photon_count))
