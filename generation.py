@@ -181,8 +181,11 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
         
         elif self.ent_round == 2 and self.psi_sign != -1:
             # entanglement succeeded, correction
-            if self.psi_sign == 1:
+            if self.psi_sign == 1 and not(self.primary):
                 self.owner.timeline.quantum_manager.run_circuit(EntanglementGenerationTimeBin._z_circuit, [self._qstate_key])
+            if (not self.primary):
+                print(self.owner.timeline.quantum_manager.states[self._qstate_key])
+                print('aboves psi sign' + str(self.psi_sign))
             self._entanglement_succeed()
             return False
 
