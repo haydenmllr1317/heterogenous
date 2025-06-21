@@ -4,7 +4,6 @@ and print statement for bug checks.
 
 '''
 
-
 """Model for single photon.
 
 This module defines the Photon class for tracking individual photons.
