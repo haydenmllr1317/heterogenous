@@ -75,7 +75,10 @@ class Photon:
         self.location: Entity = location
         self.encoding_type: Dict[str, Any] = encoding_type
         self.is_null: bool = False
-        self.loss: float = 0
+        if encoding_type == 'yb_time_bin':
+            self.loss: float = 0.995
+        else:
+            self.loss: float = 0
         self.use_qm = use_qm
 
         self.quantum_state: Union[State, int] = -1

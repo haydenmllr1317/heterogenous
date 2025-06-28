@@ -31,7 +31,19 @@ time_bin = \
      "bases": [((complex(1), complex(0)), (complex(0), complex(1))),
                ((complex(sqrt(1 / 2)), complex(sqrt(1 / 2))), (complex(sqrt(1 / 2)), complex(-sqrt(1 / 2))))],
      "raw_fidelity": 1,
-     "bin_separation": 50000 # 1400  # measured in ps
+     "bin_separation": 50000, # 1400  # measured in ps
+     "em_delay": 0,
+     "retrap_time": 0
+     }
+
+yb_time_bin = \
+    {"name": "yb_time_bin",
+     "bases": [((complex(1), complex(0)), (complex(0), complex(1))),
+               ((complex(sqrt(1 / 2)), complex(sqrt(1 / 2))), (complex(sqrt(1 / 2)), complex(-sqrt(1 / 2))))],
+     "raw_fidelity": 0.9, # according to Covey Paper
+     "bin_separation": 1900000, # changed for resolution 1916000, # according to Covey Paper
+     "em_delay": 1456700000, # this is what it should be: 1456708000 # according to Covey paper, but I had to simplify for schedule_qubit
+     "retrap_time": 500000000000
      }
 
 # single_atom must be copied by a memory object so the fidelity field can be overwritten

@@ -94,8 +94,8 @@ class BSM(Entity):
         Arguments:
             photon (Photon): photon to measure.
         """
-
-        assert photon.encoding_type["name"] == self.encoding, \
+        # NOTE: CHANGED THIS TO REFLECT ENCODING IS NOW A DICT
+        assert photon.encoding_type["name"] == self.encoding["name"], \
             "BSM expecting photon with encoding '{}' received photon with encoding '{}'".format(
                 self.encoding, photon.encoding_type["name"])
 
@@ -174,7 +174,7 @@ class TimeBinBSM(BSM):
     _meas_circuit = Circuit(1)
     _meas_circuit.measure(0)
 
-    def __init__(self, name, timeline, phase_error=0, detectors=None):
+    def __init__(self, name, timeline, encoding, phase_error=0, detectors=None):
         """Constructor for the time bin BSM class.
 
         Args:
@@ -190,7 +190,7 @@ class TimeBinBSM(BSM):
 
         super().__init__(name, timeline, phase_error, detectors)
 
-        self.encoding = 'time_bin'
+        self.encoding = encoding
         self.last_res = [-1, -1]
         self.early_early = 0
         self.early_late = 0
@@ -216,7 +216,7 @@ class TimeBinBSM(BSM):
         """
 
         super().get(photon)
-        log.logger.debug(self.name + " recieved photon")
+        log.logger.debug(self.name + " recieved 'photon' quantum information")
         
         if len(self.photons) == 2:
             qm = self.timeline.quantum_manager
@@ -229,7 +229,7 @@ class TimeBinBSM(BSM):
             
             log.logger.debug(self.name + " measured photons as {}, {}".format(meas0,meas1))
 
-            late_time = self.timeline.now() + time_bin["bin_separation"]
+            late_time = self.timeline.now() + self.encoding["bin_separation"]
 
             if (not meas0) and (not meas1):
                 self.early_early += 1
@@ -253,10 +253,10 @@ class TimeBinBSM(BSM):
                 detector_num2 = self.get_generator().choice([0,1])
                 if detector_num1 == detector_num2:
                     _set_state_with_fidelity(keys, BSM._psi_plus, p0.encoding_type["raw_fidelity"],
-                    self.get_generator(), qm)
+                                             self.get_generator(), qm)
                 else:
                     _set_state_with_fidelity(keys, BSM._psi_minus, p0.encoding_type["raw_fidelity"],
-                    self.get_generator(), qm)
+                                             self.get_generator(), qm)
                 if self.get_generator().random() > p0.loss:
                     self.detectors[detector_num1].get()
                 else:
@@ -325,8 +325,10 @@ class TimeBinBSM(BSM):
         detector_num = self.detectors.index(detector)
         time = info["time"]
 
+        log.logger.info(self.name + ' was triggered by ' + detector.name)
+
         # check if valid time
-        if round((time - self.last_res[0]) / time_bin["bin_separation"]) == 1:
+        if round((time - self.last_res[0]) / self.encoding["bin_separation"]) == 1:
             if (not self.desired_state):
                 # an 'undesired state' is one that is either |early,early>
                 #   or |late,late>. thus the photons' timing should be

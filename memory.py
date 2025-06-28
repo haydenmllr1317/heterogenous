@@ -19,7 +19,7 @@ from photon import Photon
 from sequence.kernel.entity import Entity
 from sequence.kernel.event import Event
 from sequence.kernel.process import Process
-from encoding import single_atom, single_heralded, time_bin
+from encoding import single_atom, single_heralded, time_bin, yb_time_bin
 from sequence.constants import EPSILON
 from sequence.utils import log
 from sequence.components.memory import MemoryArray
@@ -130,6 +130,9 @@ class Memory(Entity):
         # for photons with encoding type of time_bin
         self.encoding_tb = copy(time_bin)
 
+        # for photons with yb time_bin encoding
+        self.encoding_yb = copy(yb_time_bin)
+
         # keep track of previous BSM result (for entanglement generation)
         # -1 = no result, 0/1 give detector number
         self.previous_bsm = -1
@@ -168,19 +171,27 @@ class Memory(Entity):
             return
 
         # create photon
-        if protocol == "bk" and encoding_type != "time_bin":
-            photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding,
-                            quantum_state=self.qstate_key, use_qm=True)
-        elif protocol == "sh" and encoding_type != "time_bin":
-            photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding_sh, 
-                            quantum_state=self.qstate_key, use_qm=True)
-            # keep track of initialization time
-            self.generation_time = self.timeline.now()
-            self.last_update_time = self.timeline.now()
-        elif encoding_type == "time_bin":
+        if encoding_type == "time_bin":
             photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding_tb, 
             quantum_state=self.qstate_key, use_qm=True)
             # keep track of memory initialization time
+            self.generation_time = self.timeline.now()
+            self.last_update_time = self.timeline.now()
+            self.encoding = self.encoing_tb
+        if encoding_type == "yb_time_bin":
+            photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding_yb, 
+            quantum_state=self.qstate_key, use_qm=True)
+            # keep track of memory initialization time
+            self.generation_time = self.timeline.now()
+            self.last_update_time = self.timeline.now()
+            self.encoding = self.encoding_yb
+        elif protocol == "bk":
+            photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding,
+                            quantum_state=self.qstate_key, use_qm=True)
+        elif protocol == "sh":
+            photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding_sh, 
+                            quantum_state=self.qstate_key, use_qm=True)
+            # keep track of initialization time
             self.generation_time = self.timeline.now()
             self.last_update_time = self.timeline.now()
         else:
@@ -193,6 +204,11 @@ class Memory(Entity):
         if self.frequency > 0:
             period = 1e12 / self.frequency
             self.next_excite_time = self.timeline.now() + period
+
+        # emission = Process(self._receivers[0], 'get', [photon], {'dst': dst})
+        # em_time = self.timeline.now() + self.encoding['em_delay']
+        # em_event = Event(em_time, emission)
+        # self.timeline.schedule(em_event)
 
         # send to receiver
         self._receivers[0].get(photon, dst=dst)
@@ -366,3 +382,8 @@ class Memory(Entity):
         state = state_obj.state
         return state[0]
 
+class Yb(Memory):
+
+    def __init__(self, name: str, timeline: "Timeline", fidelity: float, frequency: float,
+                 efficiency: float, coherence_time: float, wavelength: int, decoherence_errors: List[float] = None, cutoff_ratio: float = 1):
+        super.__init__(self, name, timeline, fidelity, frequency, efficiency, coherence_time, wavelength, decoherence_errors, cutoff_ratio)

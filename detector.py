@@ -109,13 +109,13 @@ class Detector(Entity):
         time_to_next = int(self.get_generator().exponential(
                 1 / self.dark_count) * 1e12)  # time to next dark count
         time = time_to_next + self.timeline.now()  # time of next dark count
-
         process1 = Process(self, "add_dark_count", [])  # schedule photon detection and dark count add in future
         process2 = Process(self, "record_detection", [])
         event1 = Event(time, process1)
         event2 = Event(time, process2)
         self.timeline.schedule(event1)
         self.timeline.schedule(event2)
+        # print(time)
 
     def record_detection(self):
         """Method to record a detection event.
