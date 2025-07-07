@@ -109,6 +109,8 @@ class Memory(Entity):
         self.wavelength = wavelength
         self.qstate_key = timeline.quantum_manager.new()
         self.memory_array = None
+        
+        self.atom_present = True
 
         self.decoherence_errors = decoherence_errors
         if self.decoherence_errors is not None:

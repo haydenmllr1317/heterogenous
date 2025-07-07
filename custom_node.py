@@ -282,3 +282,177 @@ class BSMNode(Node):
         """
 
         self.protocols[0].others.append(other.name)
+
+class QuantumRouterYb(Node):
+    """Node for entanglement distribution networks.
+
+    This node type comes pre-equipped with memory hardware, along with the default SeQUeNCe modules (sans application).
+    By default, a quantum memory array is included in the components of this node.
+
+    Attributes:
+        resource_manager (ResourceManager): resource management module.
+        network_manager (NetworkManager): network management module.
+        map_to_middle_node (Dict[str, str]): mapping of router names to intermediate bsm node names.
+        app (any): application in use on node.
+        gate_fid (float): fidelity of multi-qubit gates (usually CNOT) that can be performed on the node.
+        meas_fid (float): fidelity of single-qubit measurements (usually Z measurement) that can be performed on the node.
+    """
+
+    def __init__(self, name, tl, memo_size=50, seed=None, component_templates=None, gate_fid: float = 1, meas_fid: float = 1):
+        """Constructor for quantum router class.
+
+        Args:
+            name (str): label for node.
+            tl (Timeline): timeline for simulation.
+            memo_size (int): number of memories to add in the array (default 50).
+            seed (int): the random seed for the random number generator
+            compoment_templates (dict): parameters for the quantum router
+            gate_fid (float): fidelity of multi-qubit gates (usually CNOT) that can be performed on the node;
+                Default value is 1, meaning ideal gate.
+            meas_fid (float): fidelity of single-qubit measurements (usually Z measurement) that can be performed on the node;
+                Default value is 1, meaning ideal measurement.
+        """
+
+        super().__init__(name, tl, seed, gate_fid, meas_fid)
+        if not component_templates:
+            component_templates = {}
+
+        # create memory array object with optional args
+        self.memo_arr_name = name + ".MemoryArray"
+        memo_arr_args = component_templates.get("MemoryArray", {})
+        memory_array = MemoryArray(self.memo_arr_name, tl, num_memories=memo_size, **memo_arr_args)
+        self.add_component(memory_array)
+        memory_array.add_receiver(self)
+
+        # setup managers
+        self.resource_manager = None
+        self.network_manager = None
+        self.init_managers(self.memo_arr_name)
+        self.map_to_middle_node = {}
+        self.app = None
+
+    def receive_message(self, src: str, msg: "Message") -> None:
+        """Determine what to do when a message is received, based on the msg.receiver.
+
+        Args:
+            src (str): name of node that sent the message.
+            msg (Message): the received message.
+        """
+
+        log.logger.info("{} receive message {} from {}".format(self.name, msg, src))
+        if msg.receiver == "network_manager":
+            self.network_manager.received_message(src, msg)
+        elif msg.receiver == "resource_manager":
+            self.resource_manager.received_message(src, msg)
+        else:
+            if msg.receiver is None:  # the msg sent by EntanglementGenerationB doesn't have a receiver (EGA & EGB not paired)
+                matching = [p for p in self.protocols if type(p) == msg.protocol_type]
+                for p in matching:    # the valid_trigger_time() function resolves multiple matching issue
+                    p.received_message(src, msg)
+            else:
+                for protocol in self.protocols:
+                    if protocol.name == msg.receiver:
+                        protocol.received_message(src, msg)
+                        break
+
+    def init_managers(self, memo_arr_name: str):
+        """Initialize resource manager and network manager.
+
+        Args:
+            memo_arr_name (str): the name of the memory array.
+        """
+        resource_manager = ResourceManager(self, memo_arr_name)
+        network_manager = NewNetworkManager(self, memo_arr_name)
+        self.set_resource_manager(resource_manager)
+        self.set_network_manager(network_manager)
+
+    def set_resource_manager(self, resource_manager: ResourceManager):
+        """Assigns the resource manager."""
+        self.resource_manager = resource_manager
+
+    def set_network_manager(self, network_manager: NetworkManager):
+        """Assigns the network manager."""
+        self.network_manager = network_manager
+
+    def init(self):
+        """Method to initialize quantum router node.
+
+        Inherit parent function.
+        """
+
+        super().init()
+
+    def add_bsm_node(self, bsm_name: str, router_name: str):
+        """Method to record connected BSM nodes
+
+        Args:
+            bsm_name (str): the BSM node between nodes self and router_name.
+            router_name (str): the name of another router connected with the BSM node.
+        """
+        self.map_to_middle_node[router_name] = bsm_name
+
+    def get(self, photon: "Photon", **kwargs):
+        """Receives photon from last hardware element (in this case, quantum memory)."""
+        dst = kwargs.get("dst", None)
+        if dst is None:
+            raise ValueError("Destination should be supplied for 'get' method on QuantumRouter")
+        self.send_qubit(dst, photon)
+
+    def memory_expire(self, memory: "Memory") -> None:
+        """Method to receive expired memories.
+
+        Args:
+            memory (Memory): memory that has expired.
+        """
+
+        self.resource_manager.memory_expire(memory)
+
+    def set_app(self, app: "RequestApp"):
+        """Method to add an application to the node."""
+
+        self.app = app
+
+    def reserve_net_resource(self, responder: str, start_time: int, end_time: int, memory_size: int,
+                             target_fidelity: float, entanglement_number: int = 1, identity: int = 0) -> None:
+        """Method to request a reservation.
+
+        Can be used by local applications.
+
+        Args:
+            responder (str): name of the node with which entanglement is requested.
+            start_time (int): desired simulation start time of entanglement.
+            end_time (int): desired simulation end time of entanglement.
+            memory_size (int): number of memories requested.
+            target_fidelity (float): desired fidelity of entanglement.
+            entanglement_number (int): the number of entanglement that the request ask for (default 1).
+            identity (int): the ID of the request (default 0).
+        """
+
+        self.network_manager.request(responder, start_time, end_time, memory_size, target_fidelity, entanglement_number, identity)
+
+    def get_idle_memory(self, info: "MemoryInfo") -> None:
+        """Method for application to receive available memories."""
+
+        if self.app:
+            self.app.get_memory(info)
+
+    def get_reservation_result(self, reservation: "Reservation", result: bool) -> None:
+        """Method for application to receive reservations results
+
+        Args:
+            reservation (Reservation): the reservation created by the reservation protocol at this node (the initiator).
+            result (bool): whether the reservation has been approved by the responder.
+        """
+
+        if self.app:
+            self.app.get_reservation_result(reservation, result)
+
+    def get_other_reservation(self, reservation: "Reservation"):
+        """Method for application to add the approved reservation that is requested by other nodes
+        
+        Args:
+            reservation (Reservation): the reservation created by the other node (this node is the responder)
+        """
+
+        if self.app:
+            self.app.get_other_reservation(reservation)

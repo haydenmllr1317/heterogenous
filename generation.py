@@ -30,6 +30,9 @@ from sequence.utils import log
 from sequence.entanglement_management.generation import GenerationMsgType
 from sequence.entanglement_management.generation import EntanglementGenerationMessage
 from encoding import time_bin
+from math import e
+import numpy as np
+from numpy import random as rm
 
 
 def valid_trigger_time(trigger_time: int, target_time: int, resolution: int) -> bool:
@@ -97,6 +100,8 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
         # memory info
         self.memory: Memory = memory
         self.remote_memo_id: str = ""  # memory index used by corresponding protocol on other node
+        
+        self.original_memory_efficiency = self.memory.efficiency
 
         # network and hardware info
         self.fidelity: float = memory.raw_fidelity
@@ -121,6 +126,8 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
         
         self.loop = loop # this is true if we want to continue gunning for entanglement
         self.attempts = 0
+
+        self.atom_lost = False
 
     def set_others(self, protocol: str, node: str, memories: List[str]) -> None:
         """Method to set other entanglement protocol instance.
@@ -152,6 +159,15 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
         if self not in self.owner.protocols:
             return
 
+        if (not self.atom_lost):
+            prob_atom_lost = e**(-self.attempts/40)
+            if np.random.rand() > prob_atom_lost:
+                log.logger.info('Atom on ' + self.owner.name + ' lost in sequence attempt ' + str(self.attempts))
+                self.memory.efficiency = 0
+                self.atom_lost = True
+
+        # if self.atom_lost:
+        #     self._entanglement_fail()
 
         # update memory, and if necessary start negotiations for round
         if self.update_memory() and self.primary:
@@ -159,10 +175,8 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
             frequency = self.memory.frequency
             message = EntanglementGenerationMessage(GenerationMsgType.NEGOTIATE, self.remote_protocol_name,
                                                     qc_delay=self.qc_delay, frequency=frequency)
-            if self.attempts > 128:
-                if self.attempts != 129:
-                    raise ValueError('We overran attempts somehow.')
-                self.attempts = 1
+            self.memory
+            if self.attempts == 1:
                 send = Process(self.owner, 'send_message', [self.remote_node_name, message])
                 send_event = Event(self.owner.timeline.now() + self.encoding['retrap_time'], send)
                 self.owner.timeline.schedule(send_event)
@@ -170,6 +184,11 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
             else:
                 # send NEGOTIATE message
                 self.owner.send_message(self.remote_node_name, message)
+            
+        if self.attempts == 128:
+            self.memory.efficiency = self.original_memory_efficiency
+            self.attempts = 0
+            self.atom_lost = False
 
     def update_memory(self) -> bool:
         """Method to handle necessary memory operations.
@@ -383,4 +402,5 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
             self.ent_round = 0  # keep track of current stage of protocol
             self.psi_sign = -1
             self.last_res = [0,-1]
+            self.atom_lost = False
             self.start()

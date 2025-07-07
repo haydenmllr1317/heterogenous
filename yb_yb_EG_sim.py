@@ -15,7 +15,8 @@ from qchannels import QuantumChannel, ClassicalChannel
 from generation import EntanglementGenerationTimeBin
 from sequence.message import Message
 from sequence.utils import log
-import plotly.graph_objects as go
+# import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 from encoding import yb_time_bin
 from copy import copy
 
@@ -46,7 +47,7 @@ class EntangleGenNodeTimeBin(Node):
         super().__init__(name, tl)
 
         memo_name = '%s.memo' % name
-        memory = Memory(memo_name, tl, 0.9, 2000, float(23/128), -1, 500)
+        memory = Memory(memo_name, tl, 0.9, 2000, (.05*(128/23)), -1, 500)
         memory.add_receiver(self)
         self.add_component(memory)
         self.encoding = encoding
@@ -92,7 +93,7 @@ bsm_node.set_seed(2)
 
 # use encoding_name to grab encoding-appropriate BSM object
 bsm = bsm_node.get_components_by_type(encoding_name)[0]
-bsm.update_detectors_params('efficiency', .7) # accordint to Covey
+bsm.update_detectors_params('efficiency', .80) # accordint to Covey
 bsm.update_detectors_params('dark_count', float(11))
 
 # according to Covey paper, attenuation = .3dB/km
@@ -130,12 +131,12 @@ time_dict = {}
 running_total = 0
 running_time = 0
 
-n = 100
+n = 50
 
 # run
 for i in range(n):
-    tl.time = tl.now() + 1e11
     beginning = tl.now()
+    tl.time += 37510000000
     tl.init()
     ent = False
     node1.resource_manager.raw_counter = 0
@@ -168,6 +169,7 @@ for i in range(n):
     try: rounds_dict[x] += 1
     except: rounds_dict[x] = 1
     running_total += x
+    print(str(i))
 
 avg = float(running_total) / float(n)
 avg_time = float(running_time)/float(n)
@@ -176,8 +178,8 @@ print(avg)
 print(avg_time)
 print(avg_time*(10**(-12)))
 
-time_fig = go.Figure(data=go.Bar(x=list(time_dict.keys()),y =list(time_dict.values())))
-time_fig.write_html("yb_time_bar_chart.html")
+# time_fig = go.Figure(data=go.Bar(x=list(time_dict.keys()),y =list(time_dict.values())))
+# time_fig.write_html("yb_time_bar_chart.html")
 
-fig = go.Figure(data=go.Bar(x=list(rounds_dict.keys()),y =list(rounds_dict.values())))
-fig.write_html("yb_bar_chart.html")
+# fig = go.Figure(data=go.Bar(x=list(rounds_dict.keys()),y =list(rounds_dict.values())))
+# fig.write_html("yb_bar_chart.html")

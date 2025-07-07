@@ -1,0 +1,74 @@
+{
+    "nodes": [
+        {
+            "name": "router_0",
+            "type": "QuantumRouter",
+            "seed": 0,
+            "memo_size": 1,
+            "memo_type": "Yb",
+            "group": 0
+        },
+        {
+            "name": "router_1",
+            "type": "QuantumRouter",
+            "seed": 1,
+            "memo_size": 1,
+            "memo_type": "Yb",
+            "group": 0
+        },
+        {
+            "name": "BSM_0_1",
+            "type": "BSMNode",
+            "encoding_type": "yb_time_bin",
+            "seed": 0
+        }
+    ],
+    "qchannels": [
+        {
+            "source": "router_0",
+            "destination": "BSM_0_1",
+            "distance": 500000.0,
+            "attenuation": 0.0003
+        },
+        {
+            "source": "router_1",
+            "destination": "BSM_0_1",
+            "distance": 500000.0,
+            "attenuation": 0.0003
+        }
+    ],
+    "cchannels": [
+        {
+            "source": "BSM_0_1",
+            "destination": "router_0",
+            "delay": -1
+        },
+        {
+            "source": "router_0",
+            "destination": "BSM_0_1",
+            "delay": -1
+        },
+        {
+            "source": "BSM_0_1",
+            "destination": "router_1",
+            "delay": -1
+        },
+        {
+            "source": "router_1",
+            "destination": "BSM_0_1",
+            "delay": -1
+        },
+        {
+            "source": "router_0",
+            "destination": "router_1",
+            "delay": -1
+        },
+        {
+            "source": "router_1",
+            "destination": "router_0",
+            "delay": -1
+        }
+    ],
+    "stop_time": Infinity,
+    "is_parallel": false
+}
