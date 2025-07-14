@@ -31,8 +31,6 @@ from sequence.entanglement_management.generation import GenerationMsgType
 from sequence.entanglement_management.generation import EntanglementGenerationMessage
 from encoding import time_bin
 from math import e
-import numpy as np
-from numpy import random as rm
 
 
 def valid_trigger_time(trigger_time: int, target_time: int, resolution: int) -> bool:
@@ -81,7 +79,7 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
     _z_circuit = Circuit(1)
     _z_circuit.z(0)
 
-    def __init__(self, owner: "Node", name: str, middle: str, other: str, memory: "Memory", encoding, loop: str = False):
+    def __init__(self, owner: "Node", name: str, middle: str, other: str, memory: "Memory", encoding, loop: str = False, retrap_num: int = 128):
         """Constructor for entanglement generation A class.
 
         Args:
@@ -128,6 +126,7 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
         self.attempts = 0
 
         self.atom_lost = False
+        self.retrap_num = retrap_num
 
     def set_others(self, protocol: str, node: str, memories: List[str]) -> None:
         """Method to set other entanglement protocol instance.
@@ -160,8 +159,9 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
             return
 
         if (not self.atom_lost):
-            prob_atom_lost = e**(-self.attempts/40)
-            if np.random.rand() > prob_atom_lost:
+            # prob_atom_lost = e**(-self.attempts/40)
+            prob_atom_lost = .9708
+            if self.owner.generator.random() > prob_atom_lost:
                 log.logger.info('Atom on ' + self.owner.name + ' lost in sequence attempt ' + str(self.attempts))
                 self.memory.efficiency = 0
                 self.atom_lost = True
@@ -185,7 +185,7 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
                 # send NEGOTIATE message
                 self.owner.send_message(self.remote_node_name, message)
             
-        if self.attempts == 128:
+        if self.attempts == self.retrap_num:
             self.memory.efficiency = self.original_memory_efficiency
             self.attempts = 0
             self.atom_lost = False
@@ -348,7 +348,7 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
             if valid_trigger_time(time, self.expected_time, resolution):      
                 self.psi_sign = sign 
             else:
-                log.logger.debug('{} BSM trigger time not valid'.format(self.owner.name))
+                log.logger.warning('{} BSM trigger time not valid'.format(self.owner.name))
 
         else:
             raise Exception("Invalid message {} received by EG on node {}".format(msg_type, self.owner.name))
@@ -373,6 +373,14 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
         self.memory.fidelity = self.memory.raw_fidelity
 
         self.update_resource_manager(self.memory, MemoryInfo.ENTANGLED)
+
+        if self.primary:
+            result, basis = self.memory.measure()
+            rm1 = self.owner.timeline.get_entity_by_name('node1').resource_manager
+            rm2 = self.owner.timeline.get_entity_by_name('node2').resource_manager
+            rm1.fid_measurement(result, basis)
+            rm2.fid_measurement(result, basis)
+          
 
         a = 0
         for event in self.owner.timeline.events:
@@ -402,5 +410,4 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
             self.ent_round = 0  # keep track of current stage of protocol
             self.psi_sign = -1
             self.last_res = [0,-1]
-            self.atom_lost = False
             self.start()

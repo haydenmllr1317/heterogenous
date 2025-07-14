@@ -23,6 +23,8 @@ from encoding import single_atom, single_heralded, time_bin, yb_time_bin
 from sequence.constants import EPSILON
 from sequence.utils import log
 from sequence.components.memory import MemoryArray
+from generation import EntanglementGenerationTimeBin
+from sequence.components.circuit import Circuit
 
 
 
@@ -45,6 +47,16 @@ def _p_yerr(x_rate, y_rate, z_rate, t):
 def _p_zerr(x_rate, y_rate, z_rate, t):
     val = (1 + exp(-2*(x_rate+y_rate)*t) - exp(-2*(x_rate+z_rate)*t) - exp(-2*(z_rate+y_rate)*t)) / 4
     return val
+
+_meas_circuit = Circuit(2)
+_meas_circuit.measure(0)
+_meas_circuit.measure(1)
+_H_circuit = Circuit(2)
+_H_circuit.h(0)
+_H_circuit.h(1)
+_sDag_circuit = Circuit(2)
+_sDag_circuit.sdg(0)
+_sDag_circuit.sdg(1)
 
 
 class Memory(Entity):
@@ -147,6 +159,11 @@ class Memory(Entity):
         self.excited_photon = None
 
         self.next_excite_time = 0
+
+        self.basis = 0 # basis we are measuring in this round (for fidelity)
+        #   0 == "X"
+        #   1 == "Y"
+        #   2 == "Z"
 
     def init(self):
         pass
@@ -383,6 +400,30 @@ class Memory(Entity):
         state_obj = self.timeline.quantum_manager.get(self.qstate_key)
         state = state_obj.state
         return state[0]
+    
+    def measure(self) -> float:
+        key0 = self.qstate_key
+        key1 = self.timeline.get_entity_by_name(self.entangled_memory['node_id'] + '.memo').qstate_key
+        keys = [key0,key1]
+
+        # print(self.timeline.quantum_manager.states[0].state)
+        # if self.timeline.quantum_manager.states[0].state != self.timeline.quantum_manager.states[1].state:
+        #     raise ValueError('soemthing weird')
+        qm = self.timeline.quantum_manager
+
+        if self.basis != 2:
+            if self.basis == 1:
+                qm.run_circuit(_sDag_circuit, keys)
+            qm.run_circuit(_H_circuit, keys).keys()
+
+        meas = qm.run_circuit(_meas_circuit, keys, self.get_generator().random())
+
+        if meas[key0] == meas[key1]:
+            result = 1
+        else:
+            result = -1
+
+        return result, self.basis
 
 class Yb(Memory):
 

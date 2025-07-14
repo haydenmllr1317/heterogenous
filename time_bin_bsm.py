@@ -254,6 +254,8 @@ class TimeBinBSM(BSM):
                 if detector_num1 == detector_num2:
                     _set_state_with_fidelity(keys, BSM._psi_plus, p0.encoding_type["raw_fidelity"],
                                              self.get_generator(), qm)
+                    # if self.timeline.quantum_manager.states[0].state[0] != 0:
+                    #     print(self.timeline.quantum_manager.states[0].state[0])
                 else:
                     _set_state_with_fidelity(keys, BSM._psi_minus, p0.encoding_type["raw_fidelity"],
                                              self.get_generator(), qm)

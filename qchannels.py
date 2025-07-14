@@ -20,7 +20,7 @@ from sequence.kernel.entity import Entity
 from sequence.kernel.event import Event
 from sequence.kernel.process import Process
 from sequence.utils import log
-from sequence.constants import SPEED_OF_LIGHT, MICROSECOND
+from sequence.constants import SPEED_OF_LIGHT, MICROSECOND, EPSILON
 
 
 class OpticalChannel(Entity):
@@ -200,8 +200,8 @@ class QuantumChannel(OpticalChannel):
         # TODO: move this to node?
 
         min_time = max(min_time, self.timeline.now())
-        time_bin = min_time * (self.frequency / 1e12)
-        if time_bin - int(time_bin) > 0.00001:
+        time_bin = (min_time * self.frequency) / 1e12
+        if time_bin - int(time_bin) > EPSILON:
             time_bin = int(time_bin) + 1       # round to the next time bin
         else:
             time_bin = int(time_bin)
