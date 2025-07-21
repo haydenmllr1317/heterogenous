@@ -19,7 +19,7 @@ from photon import Photon
 from sequence.kernel.entity import Entity
 from sequence.kernel.event import Event
 from sequence.kernel.process import Process
-from encoding import single_atom, single_heralded, time_bin, yb_time_bin
+from encoding import single_atom, single_heralded, yb_time_bin#, time_bin
 from sequence.constants import EPSILON
 from sequence.utils import log
 from sequence.components.memory import MemoryArray
@@ -142,7 +142,7 @@ class Memory(Entity):
         self.encoding_sh = copy(single_heralded)
 
         # for photons with encoding type of time_bin
-        self.encoding_tb = copy(time_bin)
+        # self.encoding_tb = copy(time_bin)
 
         # for photons with yb time_bin encoding
         self.encoding_yb = copy(yb_time_bin)
@@ -411,10 +411,16 @@ class Memory(Entity):
         #     raise ValueError('soemthing weird')
         qm = self.timeline.quantum_manager
 
+        for k in keys:
+            if len(qm.states[k].state) != 4:
+                log.logger.warning('dark count state')
+                qm.set([k], [1, 0])
+
         if self.basis != 2:
             if self.basis == 1:
                 qm.run_circuit(_sDag_circuit, keys)
             qm.run_circuit(_H_circuit, keys).keys()
+
 
         meas = qm.run_circuit(_meas_circuit, keys, self.get_generator().random())
 

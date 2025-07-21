@@ -26,13 +26,15 @@ ent = False
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-eff', '--memoryefficiency', type=float, default=0.23, help='efficiency of quantum memory')
-    parser.add_argument('-n', '--numtrials', type=int, default=1000, help='number of entanglement pairs to be generated')
+    parser.add_argument('-eff', '--memoryefficiency', type=float, default=0.5, help='efficiency of quantum memory')
+    parser.add_argument('-n', '--numtrials', type=int, default=100, help='number of entanglement pairs to be generated')
     parser.add_argument('-retrap', '--numretrap', type=int, default=128, help='number of entanglement attempts before retrap')
+    parser.add_argument('-darkc', '--darkcount', type=int, default=11, help='dark count parameter of detectors')
     args = parser.parse_args()
     mem_eff = args.memoryefficiency
     n = args.numtrials
     retrap_num = args.numretrap
+    dark_count = args.darkcount
 
     global ent
 
@@ -89,6 +91,9 @@ def main():
             memory.add_receiver(self)
             self.add_component(memory)
             self.encoding = encoding
+            self.original_mem_eff = mem_eff
+            self.attempts = 0
+            self.atom_lost = False
 
             self.resource_manager = SimpleManagerYb(self, memo_name, self.encoding)
 
@@ -131,11 +136,11 @@ def main():
 
     # use encoding_name to grab encoding-appropriate BSM object
     bsm = bsm_node.get_components_by_type(encoding_name)[0]
-    bsm.update_detectors_params('efficiency', .80) # accordint to Covey
-    bsm.update_detectors_params('dark_count', float(11))
+    bsm.update_detectors_params('efficiency', 0.85) # accordint to Covey
+    bsm.update_detectors_params('dark_count', float(dark_count))
 
     # according to Covey paper, attenuation = .3dB/km
-    qc1 = QuantumChannel('qc1', tl, attenuation=0.0003, distance=1000)
+    qc1 = QuantumChannel('qc1', tl, attenuation=0.0003, distance=1000) # was 0.0003
     qc2 = QuantumChannel('qc2', tl, attenuation=0.0003, distance=1000)
     qc1.set_ends(node1, bsm_node.name)
     qc2.set_ends(node2, bsm_node.name)
@@ -150,7 +155,9 @@ def main():
                 cc.set_ends(nodes[i], nodes[j].name)
 
     # logging added here
-    log_filename = f'mem_eff={mem_eff},num_trials={n}.log'
+    # log_filename = f'retrap={retrap_num},mem_eff={mem_eff},num_trials={n}.log'
+    log_filename = f'stupid_test2.log'
+    # log_filename = 'darkcountsearch.log'
     log.set_logger(__name__, tl, log_filename)
     log.set_logger_level('WARNING')
     log.track_module('generation')
@@ -236,6 +243,9 @@ def main():
         mid_bar = low_bar
     fidelity = .999*(1/4)*(1+(-meas_dict[2]/low_bar)+(meas_dict[0]/high_bar)+(meas_dict[1]/mid_bar))
     # print(-meas_dict[2]+meas_dict[0]+meas_dict[1])
+
+    # if fidelity < 0: fidelity = 0
+    # elif fidelity > 1: fidelity = 1
 
     log.logger.warning(f'Total Fidelity was: {fidelity}.')
 

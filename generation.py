@@ -16,7 +16,7 @@ from math import sqrt
 from typing import List, TYPE_CHECKING, Dict, Any
 
 if TYPE_CHECKING:
-    from sequence.components.memory import Memory
+    from memory import Memory
     from sequence.components.bsm import SingleAtomBSM
     from custom_node import Node
 
@@ -29,7 +29,7 @@ from sequence.components.circuit import Circuit
 from sequence.utils import log
 from sequence.entanglement_management.generation import GenerationMsgType
 from sequence.entanglement_management.generation import EntanglementGenerationMessage
-from encoding import time_bin
+# from encoding import time_bin
 from math import e
 
 
@@ -99,7 +99,7 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
         self.memory: Memory = memory
         self.remote_memo_id: str = ""  # memory index used by corresponding protocol on other node
         
-        self.original_memory_efficiency = self.memory.efficiency
+        self.original_memory_efficiency = self.owner.original_mem_eff
 
         # network and hardware info
         self.fidelity: float = memory.raw_fidelity
@@ -123,9 +123,9 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
         self.photon_bin_separation = self.encoding['bin_separation']
         
         self.loop = loop # this is true if we want to continue gunning for entanglement
-        self.attempts = 0
+        # self.attempts = 0
 
-        self.atom_lost = False
+        # self.atom_lost = False
         self.retrap_num = retrap_num
 
     def set_others(self, protocol: str, node: str, memories: List[str]) -> None:
@@ -150,7 +150,9 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
             Will send message through attached node.
         """
 
-        self.attempts += 1
+        # self.attempts += 1
+
+        self.owner.attempts += 1
 
         log.logger.info(f"{self.name} protocol start with partner {self.remote_protocol_name}")
 
@@ -158,16 +160,10 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
         if self not in self.owner.protocols:
             return
 
-        if (not self.atom_lost):
-            # prob_atom_lost = e**(-self.attempts/40)
-            prob_atom_lost = .9708
-            if self.owner.generator.random() > prob_atom_lost:
-                log.logger.info('Atom on ' + self.owner.name + ' lost in sequence attempt ' + str(self.attempts))
-                self.memory.efficiency = 0
-                self.atom_lost = True
+        if self.owner.attempts == 1:
+            self.memory.efficiency = self.original_memory_efficiency
+            self.owner.atom_lost = False
 
-        # if self.atom_lost:
-        #     self._entanglement_fail()
 
         # update memory, and if necessary start negotiations for round
         if self.update_memory() and self.primary:
@@ -176,7 +172,7 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
             message = EntanglementGenerationMessage(GenerationMsgType.NEGOTIATE, self.remote_protocol_name,
                                                     qc_delay=self.qc_delay, frequency=frequency)
             self.memory
-            if self.attempts == 1:
+            if self.owner.attempts == 1:
                 send = Process(self.owner, 'send_message', [self.remote_node_name, message])
                 send_event = Event(self.owner.timeline.now() + self.encoding['retrap_time'], send)
                 self.owner.timeline.schedule(send_event)
@@ -185,10 +181,8 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
                 # send NEGOTIATE message
                 self.owner.send_message(self.remote_node_name, message)
             
-        if self.attempts == self.retrap_num:
-            self.memory.efficiency = self.original_memory_efficiency
-            self.attempts = 0
-            self.atom_lost = False
+        if self.owner.attempts == self.retrap_num:
+            self.owner.attempts = 0
 
     def update_memory(self) -> bool:
         """Method to handle necessary memory operations.
@@ -248,6 +242,14 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
             self.memory.update_state(EntanglementGenerationTimeBin._plus_state)
         else:
             raise ValueError('Entanglement protocol isn\'t single-heralded as desired.')
+        
+        if (not self.owner.atom_lost):
+            prob_atom_lost = .9708
+            if self.owner.generator.random() > prob_atom_lost:
+                log.logger.info('Atom on ' + self.owner.name + ' lost in sequence attempt ' + str(self.owner.attempts))
+                self.memory.efficiency = 0
+                self.owner.atom_lost = True
+
         self.memory.excite(self.encoding_type, self.middle)
 
     def received_message(self, src: str, msg: EntanglementGenerationMessage) -> None:
@@ -341,14 +343,16 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
         elif msg_type is GenerationMsgType.MEAS_RES:  # from middle BSM to both non-primary and primary
             sign = msg.detector # 0 if same detectors (psi+), 1 if different (psi-)
             time = msg.time
-            resolution = msg.resolution
+            # resolution = msg.resolution
+            resolution = 20000
 
             log.logger.debug("{} received MEAS_RES={} at time={:,}, expected={:,}, resolution={}, round={}".format(
                              self.owner.name, sign, time, self.expected_time, resolution, self.ent_round))
-            if valid_trigger_time(time, self.expected_time, resolution):      
+            if valid_trigger_time(time, self.expected_time, resolution):   
+                # log.logger.warning("really got valid time.")   
                 self.psi_sign = sign 
             else:
-                log.logger.warning('{} BSM trigger time not valid'.format(self.owner.name))
+                log.logger.info('{} BSM trigger time not valid'.format(self.owner.name)) # CHANGED FROM WARNING TO INFO
 
         else:
             raise Exception("Invalid message {} received by EG on node {}".format(msg_type, self.owner.name))
@@ -388,14 +392,16 @@ class EntanglementGenerationTimeBin(EntanglementProtocol):
                 a += 1
             if event.process.activation != 'update_memory':
                 self.owner.timeline.remove_event(event)
-        real_events = 0
-        for event in self.owner.timeline.events:
-            if (not event._is_removed):
-                real_events +=1
+        
+        # real_events = 0
+        # for event in self.owner.timeline.events:
+        #     if (not event._is_removed):
+        #         real_events +=1
 
-        if real_events == 1:
-            if a != 2:
-                log.logger.warning('Dark count occured at ' + self.owner.name + '.')
+        # I don't think that this means anything
+        # if real_events == 1:
+        #     if a != 2:
+        #         log.logger.warning('Dark count occured at ' + self.owner.name + '.')
 
 
     def _entanglement_fail(self):

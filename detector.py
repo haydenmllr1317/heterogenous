@@ -23,7 +23,7 @@ from sequence.components.circuit import Circuit
 from sequence.kernel.entity import Entity
 from sequence.kernel.event import Event
 from sequence.kernel.process import Process
-from encoding import time_bin, fock
+# from encoding import time_bin, fock
 from sequence.utils import log
 
 
@@ -52,7 +52,7 @@ class Detector(Entity):
     _meas_circuit = Circuit(1)
     _meas_circuit.measure(0)
 
-    def __init__(self, name: str, timeline: "Timeline", efficiency: float = 0.9, dark_count: float = 0, count_rate: float = 25e6, time_resolution: int = 150):
+    def __init__(self, name: str, timeline: "Timeline", efficiency: float = 0.9, dark_count: float = 0, count_rate: float = 25e6, time_resolution: int = 1): #momentarily chaning to 1
         Entity.__init__(self, name, timeline)  # Detector is part of the QSDetector, and does not have its own name
         self.efficiency = efficiency
         self.dark_count = dark_count  # measured in 1/s
