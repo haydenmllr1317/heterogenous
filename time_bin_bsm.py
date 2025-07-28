@@ -98,6 +98,8 @@ class BSM(Entity):
         assert photon.encoding_type["name"] == self.encoding["name"], \
             "BSM expecting photon with encoding '{}' received photon with encoding '{}'".format(
                 self.encoding, photon.encoding_type["name"])
+        
+        self.encoding = photon.encoding_type
 
         # check if photon arrived later than current photon
         if self.photon_arrival_time < self.timeline.now():
