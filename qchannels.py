@@ -9,6 +9,7 @@ import heapq as hq
 from typing import TYPE_CHECKING
 
 import numpy as np
+import gmpy2
 
 if TYPE_CHECKING:
     from sequence.kernel.timeline import Timeline
@@ -20,7 +21,8 @@ from sequence.kernel.entity import Entity
 from sequence.kernel.event import Event
 from sequence.kernel.process import Process
 from sequence.utils import log
-from sequence.constants import SPEED_OF_LIGHT, MICROSECOND
+gmpy2.get_context().precision = 200
+from sequence.constants import SPEED_OF_LIGHT, MICROSECOND, SECOND, EPSILON
 
 
 class OpticalChannel(Entity):
@@ -147,7 +149,7 @@ class QuantumChannel(OpticalChannel):
             time = -1
             while time < self.timeline.now():
                 time_bin = hq.heappop(self.send_bins)
-                time = int(time_bin * (1e12 / self.frequency))
+                time = int((time_bin * 1e12)/self.frequency)
             assert time == self.timeline.now(), "qc {} transmit method called at invalid time".format(self.name)
 
         # check if photon state using Fock representation
@@ -198,10 +200,14 @@ class QuantumChannel(OpticalChannel):
         """
 
         # TODO: move this to node?
-
         min_time = max(min_time, self.timeline.now())
-        time_bin = min_time * (self.frequency / 1e12)
-        if time_bin - int(time_bin) > 0.00001:
+        # use the package gmpy2 for high precision floating point, set to 200 bits (see beginning of this file)
+        min_time = gmpy2.mpfr(min_time)
+        freq = gmpy2.mpfr(self.frequency)
+        second = gmpy2.mpfr(SECOND)
+        time_bin = min_time * freq / second
+
+        if time_bin - gmpy2.floor(time_bin) > gmpy2.mpfr(EPSILON):
             time_bin = int(time_bin) + 1       # round to the next time bin
         else:
             time_bin = int(time_bin)
@@ -212,7 +218,7 @@ class QuantumChannel(OpticalChannel):
         hq.heappush(self.send_bins, time_bin)
 
         # calculate time
-        time = int(time_bin * (1e12 / self.frequency))
+        time = int((time_bin*1e12)/self.frequency)
         return time
 
     def _receiver_on_other_tl(self) -> bool:

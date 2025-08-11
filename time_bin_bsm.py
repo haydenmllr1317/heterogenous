@@ -233,61 +233,76 @@ class TimeBinBSM(BSM):
 
             late_time = self.timeline.now() + self.encoding["bin_separation"]
 
+            p0_odds = self.get_generator().random()
+            p1_odds = self.get_generator().random()
+
             if (not meas0) and (not meas1):
                 self.early_early += 1
                 self.desired_state = False
                 # HOM interference gives same detector
                 detector_num = self.get_generator().choice([0,1])
-                if self.get_generator().random() > p0.loss:
+                if p0_odds > p0.loss:
                     self.detectors[detector_num].get()
                 else:
                     log.logger.info(f'{self.name} lost photon p0')
 
-                if self.get_generator().random() > p1.loss:
+                if p1_odds > p1.loss:
                     self.detectors[detector_num].get()
                 else:
                     log.logger.info(f'{self.name} lost photon p1')
             
             elif (not meas0) and meas1:
                 self.early_late += 1
-                self.desired_state = True
                 detector_num1 = self.get_generator().choice([0,1])
                 detector_num2 = self.get_generator().choice([0,1])
-                if detector_num1 == detector_num2:
-                    _set_state_with_fidelity(keys, BSM._psi_plus, p0.encoding_type["raw_fidelity"],
-                                             self.get_generator(), qm)
+
+                if p0_odds > p0.loss and p1_odds > p1.loss:
+                    self.desired_state = True
+                    if detector_num1 == detector_num2:
+                        _set_state_with_fidelity(keys, BSM._psi_plus, p0.encoding_type["raw_fidelity"],
+                                                self.get_generator(), qm)
+                        # if self.timeline.quantum_manager.states[0].state[0] != 0:
+                        #     print(self.timeline.quantum_manager.states[0].state[0])
+                    else:
+                        _set_state_with_fidelity(keys, BSM._psi_minus, p0.encoding_type["raw_fidelity"],
+                                                self.get_generator(), qm)
                 else:
-                    _set_state_with_fidelity(keys, BSM._psi_minus, p0.encoding_type["raw_fidelity"],
-                                             self.get_generator(), qm)
-                if self.get_generator().random() > p0.loss:
+                    self.desired_state = False
+
+                if p0_odds > p0.loss:
                     self.detectors[detector_num1].get()
                 else:
                     log.logger.info(f'{self.name} lost photon p0')
-                if self.get_generator().random() > p1.loss:
+                if p1_odds > p1.loss:
                     process = Process(self.detectors[detector_num2], "get", [])
-                    event = Event(int(round(late_time)), process)
+                    event = Event(late_time, process)
                     self.timeline.schedule(event)
                 else:
                     log.logger.info(f'{self.name} lost photon p1')
 
             elif meas0 and (not meas1):
                 self.late_early += 1
-                self.desired_state = True
                 detector_num1 = self.get_generator().choice([0,1])
                 detector_num2 = self.get_generator().choice([0,1])
-                if detector_num1 == detector_num2:
-                    _set_state_with_fidelity(keys, BSM._psi_plus, p0.encoding_type["raw_fidelity"],
-                    self.get_generator(), qm)
+
+                if p0_odds > p0.loss and p1_odds > p1.loss:
+                    self.desired_state = True
+                    if detector_num1 == detector_num2:
+                        _set_state_with_fidelity(keys, BSM._psi_plus, p0.encoding_type["raw_fidelity"],
+                        self.get_generator(), qm)
+                    else:
+                        _set_state_with_fidelity(keys, BSM._psi_minus, p0.encoding_type["raw_fidelity"],
+                        self.get_generator(), qm)
                 else:
-                    _set_state_with_fidelity(keys, BSM._psi_minus, p0.encoding_type["raw_fidelity"],
-                    self.get_generator(), qm)
-                if self.get_generator().random() > p0.loss:
+                    self.desired_state = False
+
+                if p0_odds > p0.loss:
                     process = Process(self.detectors[detector_num1], "get", [])
-                    event = Event(int(round(late_time)), process)
+                    event = Event(late_time, process)
                     self.timeline.schedule(event)
                 else:
                     log.logger.info(f'{self.name} lost photon p0')
-                if self.get_generator().random() > p1.loss:
+                if p1_odds > p1.loss:
                     self.detectors[detector_num2].get()
                 else:
                     log.logger.info(f'{self.name} lost photon p1')
@@ -297,15 +312,15 @@ class TimeBinBSM(BSM):
                 self.desired_state = False
                 # HOM interference gives same detector
                 detector_num = self.get_generator().choice([0,1])
-                if self.get_generator().random() > p0.loss:
+                if p0_odds > p0.loss:
                     process = Process(self.detectors[detector_num], "get", [])
                     event = Event(int(round(late_time)), process)
                     self.timeline.schedule(event)
                 else:
                     log.logger.info(f'{self.name} lost photon p0')
-                if self.get_generator().random() > p1.loss:
+                if p1_odds > p1.loss:
                     process = Process(self.detectors[detector_num], "get", [])
-                    event = Event(int(round(late_time)), process)
+                    event = Event(late_time, process)
                     self.timeline.schedule(event)
                 else:
                     log.logger.info(f'{self.name} lost photon p1')

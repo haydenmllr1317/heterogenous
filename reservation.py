@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 from sequence.resource_management.rule_manager import Rule, Arguments
 from sequence.entanglement_management.generation import EntanglementGenerationA
-from generation import EntanglementGenerationTimeBinYb1389, EntanglementGenerationTimeBinYb556
+from generation import EntanglementGenerationTimeBinYb
 from sequence.entanglement_management.purification import BBPSSW
 from sequence.entanglement_management.swapping import EntanglementSwappingA, EntanglementSwappingB
 from sequence.message import Message
@@ -77,8 +77,8 @@ def eg_rule_action1(memories_info: List["MemoryInfo"], args: Dict[str, Any]) -> 
     index = args["index"]
     memo_type = args["memo_type"]
     if memo_type == "Yb":
-        function_name = f'EntanglementGenerationTimeBinYb{memory.wavelength}'
-        protocol = globals()[function_name](None, "EGTB" + str(memory.wavelength) + "." + memory.name, mid, path[index-1], memory, memo_type)
+        function_name = 'EntanglementGenerationTimeBinYb'
+        protocol = globals()[function_name](None, "EGTB." + memory.name, mid, path[index-1], memory, memo_type)
         # protocol = EntanglementGenerationTimeBin{memory.wavelength}
     else:
         protocol = EntanglementGenerationA(None, "EGA." + memory.name, mid, path[index - 1], memory)
@@ -95,14 +95,9 @@ def eg_rule_action2(memories_info: List["MemoryInfo"], args: Arguments) -> Tuple
     memory = memories[0]
     memo_type = args["memo_type"]
     if memo_type == "Yb":
-        function_name = f'EntanglementGenerationTimeBinYb{memory.wavelength}'
-        protocol = globals()[function_name](None, "EGTB" + str(memory.wavelength) + "." + memory.name, mid, path[index-1], memory, memo_type)
-        if memory.wavelength == 1389:
-            protocol_type = EntanglementGenerationTimeBinYb1389
-        elif memory.wavelength == 556:
-            protocol_type = EntanglementGenerationTimeBinYb556
-        else:
-            raise ValueError(f'{memory.name} doesn\'t support {memory.wavelength} entanglement generation.')
+        function_name = f'EntanglementGenerationTimeBinYb'
+        protocol = globals()[function_name](None, "EGTB" + "." + memory.name, mid, path[index-1], memory, memo_type)
+        protocol_type = EntanglementGenerationTimeBinYb
     else:
         protocol = EntanglementGenerationA(None, "EGA." + memory.name, mid, path[index + 1], memory)
         protocol_type = EntanglementGenerationA

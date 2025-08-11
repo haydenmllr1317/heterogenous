@@ -338,6 +338,10 @@ class QuantumRouter(Node):
         self.app = None
 
         self.attempts = 0
+        self.basis = None
+        self.meas_results = {"X_same": 0, "Z_same": 0}
+        self.entanglement_time = None
+
 
     def receive_message(self, src: str, msg: "Message") -> None:
         """Determine what to do when a message is received, based on the msg.receiver.
@@ -464,3 +468,28 @@ class QuantumRouter(Node):
 
         if self.app:
             self.app.get_other_reservation(reservation)
+
+    def save_measurement(self, psi_sign, measurement):
+        # psi_sign is 0 for psi+ and 1 for psi-
+        # measurement is 0 for same sign and 1 for different
+
+        if psi_sign == 1 and self.basis == "X":
+            same = measurement
+        else:
+            same = 1-measurement
+
+        self.meas_results[self.basis + "_same"] += same
+
+    def get_fidelity(self, num_trials: int):
+        rhoZ_same = 2*self.meas_results["Z_same"]/num_trials
+        rhoZ_diff = 1 - rhoZ_same
+        rhoX_same = 2*self.meas_results["X_same"]/num_trials
+        rhoX_diff = 1- rhoX_same
+
+        print(rhoX_diff)
+        print(rhoX_same)
+        print(rhoZ_diff)
+        print(rhoZ_same)
+
+        f = self.meas_fid * (rhoZ_diff + rhoX_same - rhoX_diff - 2*sqrt(rhoZ_same))/2
+        return f

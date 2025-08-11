@@ -22,10 +22,19 @@ from sequence.kernel.process import Process
 from encoding import single_atom, single_heralded, time_bin, yb_time_bin
 from sequence.constants import EPSILON
 from sequence.utils import log
-from sequence.components.memory import MemoryArray
 from generation import EntanglementGenerationTimeBin as EGTB
 from enum import Enum, auto
+from sequence.components.circuit import Circuit
 
+_meas_circuit = Circuit(2)
+_meas_circuit.measure(0)
+_meas_circuit.measure(1)
+_H_circuit = Circuit(2)
+_H_circuit.h(0)
+_H_circuit.h(1)
+# _sDag_circuit = Circuit(2)
+# _sDag_circuit.sdg(0)
+# _sDag_circuit.sdg(1)
 
 
 # define helper functions for analytical BDS decoherence implementation, reference see recurrence protocol paper
@@ -511,24 +520,24 @@ class Yb(Memory):
 
         self.original_memory_efficiency = self.efficiency
 
-        self.retrap_time = 500000000000
+        self.retrap_time = 500_000_000_000
         
         if wavelength == 1389:
-            self.initialize_time = 51400000
-            self.cool_time = 1400000000
-            self.state_prep_time = 5300000
-            self.excite_pulse_time = 16000
-            self.phase_flip_time = 700000
-            self.bin_gap = 2100000 # this is 2.8 microseconds separation minus 0.7microseconds raman pi pulse
+            self.initialize_time = 51_400_000
+            self.cool_time = 1_400_000_000
+            self.state_prep_time = 5_300_000
+            self.excite_pulse_time = 16_000
+            self.phase_flip_time = 700_000
+            self.bin_gap = 2_100_000 # this is 2.8 microseconds separation minus 0.7microseconds raman pi pulse
             self.atom_state = Yb1389States.P0
             self.retrap_num = 128
         elif wavelength == 556:
-            self.initialize_time = 20000000
-            self.cool_time = 1400000000
-            self.state_prep_time = 850000
-            self.excite_pulse_time = 20000
-            self.phase_flip_time = 1800000
-            self.bin_gap = 5500000 # this is 6.2 microseconds separation minus 0.7 microseconds raman pi pulse
+            self.initialize_time = 20_000_000
+            self.cool_time = 1_400_000_000
+            self.state_prep_time = 850_000
+            self.excite_pulse_time = 20_000
+            self.phase_flip_time = 1_800_000
+            self.bin_gap = 5_300_000 # this is 6 microseconds separation minus 0.7 microseconds raman pi pulse
             self.atom_state = Yb556States.S0
         else:
             raise ValueError('Wavelength ' + str(wavelength) + ' is not supported for ' + self.name + '.')
@@ -550,12 +559,12 @@ class Yb(Memory):
         # create photon
         if encoding_type == "time_bin":
             yb_encoding = {'name': 'yb_time_bin', 'bin_separation': self.bin_separation, 'raw_fidelity': 1.0}
-            photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=yb_encoding, 
-            quantum_state=self.qstate_key, use_qm=True)
+            photon = Photon("", self.timeline, wavelength=wavelength, location=self.name, encoding_type=yb_encoding, 
+            quantum_state=self.qstate_key, use_qm=True) #TODO ADD A WAY TO POINT TOWARDS THE ACTUAL FOUR_VECTOR ENTANGLED STATE (FOR ATOM AND PHOTON)
             # keep track of memory initialization time
             self.generation_time = self.timeline.now()
             self.last_update_time = self.timeline.now()
-            self.encoding = self.encoding_tb
+            # self.encoding = self.encoding_tb
         else:
             raise ValueError("Invalid encoding type {} specified for memory.exite()".format(encoding_type))
 
@@ -567,32 +576,37 @@ class Yb(Memory):
             period = 1e12 / self.frequency
             self.next_excite_time = self.timeline.now() + period
 
+        # ADD: send to frequency converter
+
         # send to receiver
         self._receivers[0].get(photon, dst=dst)
         self.excited_photon = photon
     
-    def initialize_cool_prep(self) -> int: #NOTE NOTE NOTE CHANGE THIS TO FIT THER EST OF MY CLASS
+    def initialize_cool_prep(self) -> int:
+
+        if (self.owner.attempts == 1) or ((self.owner.attempts % 128) == 1 and self.wavelength == 1389):
+            added_delay = self.retrap_time
+            if self.wavelength == 1389:
+                self.atom_state = Yb1389States.P0
+                self.efficiency = self.original_memory_efficiency
+        else:
+            added_delay = 0
 
         # 3% loss due to depumping from 3P0 to 1S0
-        if self.atom_state != Yb1389States.LOST and self.atom_state != Yb556States.LOST:
+        if self.atom_state != Yb1389States.LOST and self.wavelength == 1389:
             if self.get_generator().random() >= .97:
-                if self.wavelength == 1389:
-                    self.atom_state = Yb1389States.LOST
-                elif self.wavelength == 556:
-                    self.atom_state = Yb556States.LOST
-                else:
-                    raise ValueError(f'Wavelength {self.wavelength} not supported by {self.name}.')
-
+                self.atom_state = Yb1389States.LOST
                 self.efficiency = 0
-                log.logger.warning("Atom " + str(self.name) + " lost in depumping.")
+                log.logger.info("Atom " + str(self.name) + " lost in depumping.")
             else:
                 # if not lost, atoms should already be in correct state here
                 if self.wavelength == 1389:
                     self.atom_state = Yb1389States.P0
-
-        self.update_state(EGTB._plus_state)
+        if self.efficiency != 0:
+            self.update_state(EGTB._plus_state)
         log.logger.info('Atom ' + str(self.name) + ' succesfully prepared in |+>.')
-        total_time = self.initialize_time + self.cool_time + self.state_prep_time + self.excite_pulse_time
+
+        total_time = self.initialize_time + self.cool_time + self.state_prep_time + self.excite_pulse_time + added_delay
         return total_time
     
     def atom_transition(self) -> bool:
@@ -607,6 +621,7 @@ class Yb(Memory):
                     self.atom_state = Yb1389States.S0
                     return 999
                 else:
+                    log.logger.info(f'Atom {self.name} lost in transition.')
                     self.atom_state = Yb1389States.LOST
                     self.efficiency = 0
                     return 999
@@ -621,5 +636,97 @@ class Yb(Memory):
                 raise ValueError(f'Prior to transition, atom is incorrectly in {self.atom_state}.' )
         else:
             raise ValueError('Wavelength ' + str(self.wavelength) + ' is not supported for ' + self.name + '.')
+        
+    def measure(self) -> float:
+        # ideally this process is supressing the measured qubits state and forcing the key to point towards
+        # the others'
+
+        key0 = self.qstate_key
+        key1 = self.timeline.get_entity_by_name(self.entangled_memory['node_id'] + '.MemoryArray[0]').qstate_key
+        keys = [key0,key1]
+
+        # print(self.timeline.quantum_manager.states[0].state)
+        # if self.timeline.quantum_manager.states[0].state != self.timeline.quantum_manager.states[1].state:
+        #     raise ValueError('soemthing weird')
+        qm = self.timeline.quantum_manager
+
+        for k in keys:
+            if len(qm.states[k].state) != 4:
+                log.logger.warning('dark count state')
+                # qm.set([k], [1, 0])
+
+        if self.owner.basis == "X":
+            qm.run_circuit(_H_circuit, keys).keys()
+
+        # if self.basis != 2:
+        #     if self.basis == 1:
+        #         qm.run_circuit(_sDag_circuit, keys)
+        #     qm.run_circuit(_H_circuit, keys).keys()
+
+
+        meas = qm.run_circuit(_meas_circuit, keys, self.get_generator().random())
+
+        # now, we just care about whether they are the the same (0) or diff(1)
+
+        if meas[key0] == meas[key1]:
+            result = 0
+        else:
+            result = 1
+
+        return result, self.owner.basis
+    
+    def change_wavelength(self, wavelength: int):
+        if wavelength == 1389:
+            self.initialize_time = 51_400_000
+            self.cool_time = 1_400_000_000
+            self.state_prep_time = 5_300_000
+            self.excite_pulse_time = 16_000
+            self.phase_flip_time = 700_000
+            self.bin_gap = 2_100_000 # this is 2.8 microseconds separation minus 0.7microseconds raman pi pulse
+            self.atom_state = Yb1389States.P0
+            self.retrap_num = 128
+        elif wavelength == 556:
+            self.initialize_time = 20_000_000
+            self.cool_time = 1_400_000_000
+            self.state_prep_time = 850_000
+            self.excite_pulse_time = 20_000
+            self.phase_flip_time = 1_800_000
+            self.bin_gap = 5_300_000 # this is 6 microseconds separation minus 0.7 microseconds raman pi pulse
+            self.atom_state = Yb556States.S0
+        else:
+            raise ValueError('Wavelength ' + str(wavelength) + ' is not supported for ' + self.name + '.')
+        
+        self.wavelength = wavelength
+
+    
+class TState(Enum):
+    g = auto()
+    e = auto()
+    f = auto()
+
+class Transmon(Memory):
+    def __init__(self, name: str, timeline: "Timeline", fidelity: float, frequency: float,
+                 efficiency: float, coherence_time: float, wavelength: int, decoherence_errors: List[float] = None, cutoff_ratio: float = 1):
+        
+        super().__init__(name, timeline, fidelity, frequency, efficiency, coherence_time, wavelength, decoherence_errors, cutoff_ratio)
+
+        self.t1_coherance = 100000000
+        self.t2_coherance = 100000000
+        self.photon_collection_efficiency = 1 # uwaves emmited into cavity all get picked up
+        self.wavelength = None # unclear what it is for uwave
+        self.measurement_time = 1000000
+        self.initialization_time = 5*self.t1_coherance # time to get everything into ground state
+        self.prep_time = None # unclear what it is to apply hadamard pulse to ground state
+        self.ge_transition_time = 20000 # time to excite from |g> -> |e>
+        self.eg_transition_time = 20000 # time to excite from |e> -> |f>
+        self.fe_transition_time = 200000 # time to drive decay from |f0> -> |g1>
+        self.nondemolition_measurement_time = None # unclear how long this takes
+
+        # TODO TState keep track of fidelity as isn't perfet
+
+    def absorb(self, photon: Photon):
+        # this should alter the state, taking a certain amount of time
+        # TODO implement memory absorbtion 
+        pass
 
 
