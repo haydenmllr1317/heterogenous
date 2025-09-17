@@ -725,6 +725,11 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
             if (self.owner.attempts == 1) or ((self.owner.attempts % 128) == 1 and self.memory.wavelength == 1389):
                 added_delay = self.memory.retrap_time
                 emit_delay += added_delay
+                for event in self.owner.timeline.events:
+                    if event.process.activation in ['schedule_atom_loss', 'lose_atom']:
+                        if event.process.owner.name == self.owner.name:
+                            self.owner.timeline.remove_event(event)
+                self.memory.schedule_atom_loss()
             emit_time = self.owner.schedule_qubit(self.middle, min_time + emit_delay)  # used to send memory
             emit_time_delta = emit_time - min_time - emit_delay
             self.expected_time = emit_time + self.qc_delay + self.memory.bin_separation  # need to be prepared for worst case scenario - a late photon
@@ -758,6 +763,7 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
             if (self.owner.attempts == 1) or ((self.owner.attempts % 128) == 1 and self.memory.wavelength == 1389):
                 added_delay = self.memory.retrap_time
                 emit_delay += added_delay
+                self.memory.schedule_atom_loss()
             self.expected_time = msg.emit_time + self.qc_delay + self.memory.bin_separation # expected time for middle BSM node to receive the photon
             # we include photon_bin_separation above as need to consider getting a photon in the 'late' state
 
@@ -821,14 +827,19 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
         self.update_resource_manager(self.memory, MemoryInfo.ENTANGLED)
 
         for event in self.owner.timeline.events:
-            if event.process.activation in ['add_dark_count', 'record_detection']:
+            if event.process.activation in ['add_dark_count', 'record_detection', 'schedule_atom_loss', 'lose_atom', 'send_to_receiver']:
                 self.owner.timeline.remove_event(event)
 
         if self.primary:
             result, _ = self.memory.measure()
-            self.owner.save_measurement(self.psi_sign, result)
+            process = Process(self.owner, "save_measurement", [self.psi_sign, result])
+            delay = self.owner.timeline.now() + self.memory.readout_time
+            if self.owner.basis == "X":
+                delay += self.memory.raman_half_pi_pulse_time
+            event = Event(delay, process)
+            self.owner.timeline.schedule(event)
 
-        self.owner.entanglement_time = self.owner.timeline.now()
+        # self.owner.entanglement_time = self.owner.timeline.now()
 
         # if self.primary:
         #     result, basis = self.memory.measure()

@@ -7,10 +7,8 @@ def get_output(p: Popen):
         for line in stderr:
             print(line)
 
-wavelengths = [556,1389]
-parameters = {1.0: 200, 0.5: 200, 0.25: 200, 0.1: 100, 0.05: 50, 0.025: 30}
-# parameters = {0.05: 25}
-
+wavelengths = [556, 1389]
+parameters = {1.0: 200, 0.5: 200, 0.25: 200}#, 0.1: 200, 0.05: 200, 0.025: 200}
 tasks = []
 
 command = ['python3', 'main_yb_yb_EG_sim.py']

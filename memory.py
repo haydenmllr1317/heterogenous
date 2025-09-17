@@ -499,9 +499,9 @@ class Yb1389States(Enum):
     S0 = float(-1) # for 1S0 state
 
     # the values of these three are their branching ratios
-    P0 = 0.64 # for 3P0 state
-    P1 = 0.35 # for 3P1 state
-    P2 = 0.01 # for 3P2 state
+    P0 = 0.637 # for 3P0 state
+    P1 = 0.354 # for 3P1 state
+    P2 = 0.009 # for 3P2 state
     
     # arbitrary value now
     LOST = float(-2) # for atom fallen out of trap
@@ -521,28 +521,35 @@ class Yb(Memory):
         self.original_memory_efficiency = self.efficiency
 
         self.retrap_time = 500_000_000_000
+        self.atom_lifetime = 40_000_000_000_000
         
         if wavelength == 1389:
             self.initialize_time = 51_400_000
             self.cool_time = 1_400_000_000
-            self.state_prep_time = 5_300_000
+            self.clock_pulse_time = 5_000_000
+            self.raman_half_pi_pulse_time = 300_000
+            self.state_prep_time = self.clock_pulse_time + self.raman_half_pi_pulse_time
             self.excite_pulse_time = 16_000
             self.phase_flip_time = 700_000
             self.bin_gap = 2_100_000 # this is 2.8 microseconds separation minus 0.7microseconds raman pi pulse
             self.atom_state = Yb1389States.P0
             self.retrap_num = 128
+            self.readout_time = 37_510_000_000
         elif wavelength == 556:
             self.initialize_time = 20_000_000
             self.cool_time = 1_400_000_000
-            self.state_prep_time = 850_000
+            self.raman_half_pi_pulse_time = 850_000
+            self.state_prep_time = self.raman_half_pi_pulse_time
             self.excite_pulse_time = 20_000
             self.phase_flip_time = 1_800_000
             self.bin_gap = 5_300_000 # this is 6 microseconds separation minus 0.7 microseconds raman pi pulse
             self.atom_state = Yb556States.S0
+            self.readout_time = 30_000_000_000
         else:
             raise ValueError('Wavelength ' + str(wavelength) + ' is not supported for ' + self.name + '.')
         
         self.bin_separation = self.excite_pulse_time + self.bin_gap + self.phase_flip_time
+
 
 
     def excite(self, encoding_type, dst="") -> None:
@@ -594,7 +601,7 @@ class Yb(Memory):
 
         # 3% loss due to depumping from 3P0 to 1S0
         if self.atom_state != Yb1389States.LOST and self.wavelength == 1389:
-            if self.get_generator().random() >= .97:
+            if self.get_generator().random() >= .975:
                 self.atom_state = Yb1389States.LOST
                 self.efficiency = 0
                 log.logger.info("Atom " + str(self.name) + " lost in depumping.")
@@ -679,24 +686,48 @@ class Yb(Memory):
         if wavelength == 1389:
             self.initialize_time = 51_400_000
             self.cool_time = 1_400_000_000
-            self.state_prep_time = 5_300_000
+            self.clock_pulse_time = 5_000_000
+            self.raman_half_pi_pulse_time = 300_000
+            self.state_prep_time = self.clock_pulse_time + self.raman_half_pi_pulse_time
             self.excite_pulse_time = 16_000
             self.phase_flip_time = 700_000
             self.bin_gap = 2_100_000 # this is 2.8 microseconds separation minus 0.7microseconds raman pi pulse
             self.atom_state = Yb1389States.P0
             self.retrap_num = 128
+            self.readout_time = 37_510_000_000
         elif wavelength == 556:
             self.initialize_time = 20_000_000
             self.cool_time = 1_400_000_000
-            self.state_prep_time = 850_000
+            self.raman_half_pi_pulse_time = 850_000
+            self.state_prep_time = self.raman_half_pi_pulse_time
             self.excite_pulse_time = 20_000
             self.phase_flip_time = 1_800_000
             self.bin_gap = 5_300_000 # this is 6 microseconds separation minus 0.7 microseconds raman pi pulse
             self.atom_state = Yb556States.S0
+            self.readout_time = 30_000_000_000
         else:
             raise ValueError('Wavelength ' + str(wavelength) + ' is not supported for ' + self.name + '.')
         
         self.wavelength = wavelength
+
+    def schedule_atom_loss(self):
+        assert self.atom_lifetime > 0, "Memory.schedule_atom_loss() called with 0 atom lifetime."
+        time_to_next = int(self.get_generator().exponential(self.atom_lifetime) * 1e12)
+        time = time_to_next + self.timeline.now()
+        process1 = Process(self, "lose_atom", [])
+        process2 = Process(self, "schedule_atom_loss", [])
+        event1 = Event(time, process1)
+        event2 = Event(time, process2)
+        self.timeline.schedule(event1)
+        self.timeline.schedule(event2)
+
+    def lose_atom(self):
+        self.efficiency = 0
+        if self.wavelength == 1389:
+            self.atom_state = Yb1389States.LOST
+        elif self.wavelength == 556:
+            self.atom_state = Yb556States.LOST
+
 
     
 class TState(Enum):

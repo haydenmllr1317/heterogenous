@@ -16,7 +16,8 @@ if TYPE_CHECKING:
     from sequence.protocol import StackProtocol
     from sequence.resource_management.memory_manager import MemoryInfo
     from sequence.network_management.reservation import Reservation
-    from qchannels import QuantumChannel, ClassicalChannel
+    from sequence.components.optical_channel import ClassicalChannel
+    from qchannels import QuantumChannel
     from memory import Memory
     from photon import Photon
     from sequence.app.request_app import RequestApp
@@ -31,7 +32,6 @@ from sequence.qkd.cascade import Cascade
 from sequence.resource_management.resource_manager import ResourceManager
 from network_manager import NewNetworkManager, NetworkManager
 from encoding import *
-# from sequence.topology.node import Node
 from sequence.utils import log
 from sequence.components.bsm import SingleAtomBSM, SingleHeraldedBSM, PolarizationBSM
 from encoding import time_bin, yb_time_bin
@@ -221,7 +221,7 @@ class BSMNode(Node):
     """
     # NOTE: CHANGING THIS
     def __init__(self, name: str, timeline: "Timeline", other_nodes: List[str],
-                 encoding_type: str = None, seed=None) -> None:
+                 encoding_type: str = None, seed=None,) -> None:
         """Constructor for BSM node.
 
         Args:
@@ -248,6 +248,7 @@ class BSMNode(Node):
             bsm_args = {}
             bsm = SingleHeraldedBSM(bsm_name, timeline, **bsm_args)
         elif self.encoding_type == 'time_bin':
+            #NOTE I don't know if we still need this? It's only if we want a generic one too
             bsm_args = {}
             time_bin_enc = copy(time_bin)
             bsm = TimeBinBSM(bsm_name, timeline, time_bin_enc, **bsm_args)
@@ -478,6 +479,7 @@ class QuantumRouter(Node):
         else:
             same = 1-measurement
 
+        self.entanglement_time = self.timeline.now()
         self.meas_results[self.basis + "_same"] += same
 
     def get_fidelity(self, num_trials: int):

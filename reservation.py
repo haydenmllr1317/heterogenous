@@ -14,9 +14,11 @@ if TYPE_CHECKING:
     from generation import EntanglementProtocol
 
 from sequence.resource_management.rule_manager import Rule, Arguments
-from sequence.entanglement_management.generation import EntanglementGenerationA
+from sequence.entanglement_management.generation.barret_kok import BarretKokA
+from sequence.entanglement_management.generation.generation_base import EntanglementGenerationA
 from generation import EntanglementGenerationTimeBinYb
-from sequence.entanglement_management.purification import BBPSSW
+from sequence.entanglement_management.purification.bbpssw_circuit import BBPSSWCircuit
+
 from sequence.entanglement_management.swapping import EntanglementSwappingA, EntanglementSwappingB
 from sequence.message import Message
 from sequence.protocol import StackProtocol
@@ -136,28 +138,28 @@ def eg_rule_condition(memory_info: "MemoryInfo", manager: "MemoryManager", args:
 
 # entanglement purification
 
-def ep_rule_action1(memories_info: List["MemoryInfo"], args: Arguments) -> Tuple[BBPSSW, List[str], List["ep_req_func1"], List[Dict]]:
+def ep_rule_action1(memories_info: List["MemoryInfo"], args: Arguments) -> Tuple[BBPSSWCircuit, List[str], List["ep_req_func1"], List[Dict]]:
     """Action function used by BBPSSW protocol on nodes except the responder node
     """
     memories = [info.memory for info in memories_info]
     name = "EP.%s.%s" % (memories[0].name, memories[1].name)
-    protocol = BBPSSW(None, name, memories[0], memories[1])
+    protocol = BBPSSWCircuit(None, name, memories[0], memories[1])
     dsts = [memories_info[0].remote_node]
     req_funcs = [ep_req_func1]
     req_args = [{"remote0": memories_info[0].remote_memo, "remote1": memories_info[1].remote_memo}]
     return protocol, dsts, req_funcs, req_args
 
 
-def ep_rule_action2(memories_info: List["MemoryInfo"], args: Arguments) -> Tuple[BBPSSW, List[None], List[None], List[None]]:
+def ep_rule_action2(memories_info: List["MemoryInfo"], args: Arguments) -> Tuple[BBPSSWCircuit, List[None], List[None], List[None]]:
     """Action function used by BBPSSW protocol on nodes except the responder
     """
     memories = [info.memory for info in memories_info]
     name = "EP.%s" % memories[0].name
-    protocol = BBPSSW(None, name, memories[0], None)
+    protocol = BBPSSWCircuit(None, name, memories[0], None)
     return protocol, [None], [None], [None]
 
 
-def ep_req_func1(protocols, args: Arguments) -> BBPSSW:
+def ep_req_func1(protocols, args: Arguments) -> BBPSSWCircuit:
     """Function used by `ep_rule_action1` for selecting purification protocols on the remote node
        Will 'combine two BBPSSW into one BBPSSW'
 
@@ -172,7 +174,7 @@ def ep_req_func1(protocols, args: Arguments) -> BBPSSW:
 
     _protocols = []
     for protocol in protocols:
-        if not isinstance(protocol, BBPSSW):
+        if not isinstance(protocol, BBPSSWCircuit):
             continue
 
         if protocol.kept_memo.name == remote0:

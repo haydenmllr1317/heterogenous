@@ -2,12 +2,12 @@ import json
 import numpy as np
 from networkx import Graph, dijkstra_path, exception
 
-from sequence.topology.topology import Topology as Topo
+from topology import Topology as Topo
 from sequence.kernel.timeline import Timeline
-from custom_node import BSMNode, QuantumRouter
+from custom_node import Node, BSMNode, QuantumRouter
 from sequence.constants import SPEED_OF_LIGHT
 from sequence.kernel.quantum_manager import BELL_DIAGONAL_STATE_FORMALISM
-
+from QFC import QFC
 
 class RouterNetTopo(Topo):
     """Class for generating quantum communication network with quantum routers
@@ -41,11 +41,14 @@ class RouterNetTopo(Topo):
     CONTROLLER = "Controller"
     ENCODING_TYPE = 'encoding_type'
     WAVELENGTH = 'wavelength'
+    ALL_QFCS = 'qfcs'
 
     def __init__(self, conf_file_name: str):
         self.bsm_to_router_map = {}
         self.encoding_type = None
+        self.qfcs = []
         super().__init__(conf_file_name)
+        
 
     def _load(self, filename: str):
         with open(filename, 'r') as fh:
@@ -59,6 +62,7 @@ class RouterNetTopo(Topo):
         self._map_bsm_routers(config)
         self._add_nodes(config)
         self._add_bsm_node_to_router()
+        self._add_qfcs(config)
         self._add_qchannels(config)
         self._add_cchannels(config)
         self._add_cconnections(config)
@@ -74,6 +78,10 @@ class RouterNetTopo(Topo):
     def _map_bsm_routers(self, config):
         for qc in config[Topo.ALL_Q_CHANNEL]:
             src, dst = qc[Topo.SRC], qc[Topo.DST]
+            for qfc in config[self.ALL_QFCS]:
+                if dst == qfc[Topo.NAME]:
+                    dst = qfc[Topo.DST]
+                    break
             if dst in self.bsm_to_router_map:
                 self.bsm_to_router_map[dst].append(src)
             else:
@@ -220,3 +228,10 @@ class RouterNetTopo(Topo):
                     routing_protocol.add_forwarding_rule(dst_name, next_hop)
                 except exception.NetworkXNoPath:
                     pass
+    
+    def _add_qfcs(self, config: dict):
+        for qfc in config[self.ALL_QFCS]:
+            name = qfc[Topo.NAME]
+            destination = qfc[self.DST]
+            converter = QFC(name,self.tl,destination)
+            self.qfcs.append(converter)

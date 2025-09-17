@@ -27,13 +27,17 @@
     ],
     "qchannels": [
         {
+            "name": "qchannel_0",
             "source": "router_0",
+            "converter": "qfc_0",
             "destination": "BSM_0_1",
             "distance": 10.0,
             "attenuation": 0.0003
         },
         {
+            "name": "qchannel_1",
             "source": "router_1",
+            "converter": "qfc_1",
             "destination": "BSM_0_1",
             "distance": 10.0,
             "attenuation": 0.0003
@@ -69,6 +73,16 @@
             "source": "router_1",
             "destination": "router_0",
             "delay": -1
+        }
+    ],
+    "qfcs": [
+        {
+            "name": "qfc_0",
+            "destination": "BSM_0_1"
+        },
+        {
+            "name": "qfc_1",
+            "destination": "BSM_0_1"
         }
     ],
     "stop_time": Infinity,
