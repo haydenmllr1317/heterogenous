@@ -7,39 +7,39 @@ def get_output(p: Popen):
         for line in stderr:
             print(line)
 
-wavelengths = [556, 1389]
-parameters = {1.0: 200, 0.5: 200, 0.25: 200}#, 0.1: 200, 0.05: 200, 0.025: 200}
-tasks = []
+# wavelengths = [556, 1389]
+# parameters = {1.0: 200, 0.5: 200, 0.25: 200}#, 0.1: 200, 0.05: 200, 0.025: 200}
+# tasks = []
 
-command = ['python3', 'main_yb_yb_EG_sim.py']
+# command = ['python3', 'main_yb_yb_EG_sim.py']
 
-for wl in wavelengths:
-    for key in parameters.keys():
-        args = []
-        args.append('-eff')
-        args.append(str(key))
-        args.append('-n')
-        args.append(str(parameters[key]))
-        args.append('-wavelength')
-        args.append(str(wl))
-        tasks.append(command+args)
+# for wl in wavelengths:
+#     for key in parameters.keys():
+#         args = []
+#         args.append('-eff')
+#         args.append(str(key))
+#         args.append('-n')
+#         args.append(str(parameters[key]))
+#         args.append('-wavelength')
+#         args.append(str(wl))
+#         tasks.append(command+args)
 
-parallel = 10
-ps = []
-while len(tasks) > 0 or len(ps) > 0:
-    if len(ps) < parallel and len(tasks) > 0:
-        task = tasks.pop(0)
-        print(task, f'{len(tasks)} still in queue')
-        ps.append(Popen(task, stdout=PIPE, stderr=PIPE))
-    else:
-        time.sleep(0.05)
-        new_ps = []
-        for p in ps:
-            if p.poll() is None:
-                new_ps.append(p)
-            else:
-                get_output(p)
-        ps = new_ps
+# parallel = 10
+# ps = []
+# while len(tasks) > 0 or len(ps) > 0:
+#     if len(ps) < parallel and len(tasks) > 0:
+#         task = tasks.pop(0)
+#         print(task, f'{len(tasks)} still in queue')
+#         ps.append(Popen(task, stdout=PIPE, stderr=PIPE))
+#     else:
+#         time.sleep(0.05)
+#         new_ps = []
+#         for p in ps:
+#             if p.poll() is None:
+#                 new_ps.append(p)
+#             else:
+#                 get_output(p)
+#         ps = new_ps
 
 # numlist = [10, 100, 1000, 10000, 100000]
 # # alternative runner for retrap
@@ -71,3 +71,33 @@ while len(tasks) > 0 or len(ps) > 0:
 #             else:
 #                 get_output(p)
 #         ps = new_ps
+
+
+# NOTE VARYING: QFC DARK COUNT
+tasks = []
+
+command = ['python3', 'main_yb_yb_EG_sim.py']
+
+for i in range(50):
+    args = []
+    args.append('-qfc_dc')
+    x = 5.0 + 20.0*i
+    args.append(str(x))
+    tasks.append(command+args)
+
+parallel = 10
+ps = []
+while len(tasks) > 0 or len(ps) > 0:
+    if len(ps) < parallel and len(tasks) > 0:
+        task = tasks.pop(0)
+        print(task, f'{len(tasks)} still in queue')
+        ps.append(Popen(task, stdout=PIPE, stderr=PIPE))
+    else:
+        time.sleep(0.05)
+        new_ps = []
+        for p in ps:
+            if p.poll() is None:
+                new_ps.append(p)
+            else:
+                get_output(p)
+        ps = new_ps

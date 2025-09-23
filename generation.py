@@ -722,13 +722,17 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
             
             # get expected arrival time of a late photon
             emit_delay = self.memory.initialize_time + self.memory.cool_time + self.memory.state_prep_time + self.memory.excite_pulse_time
-            if (self.owner.attempts == 1) or ((self.owner.attempts % 128) == 1 and self.memory.wavelength == 1389):
+
+            time_in_trap = self.owner.timeline.now() - self.owner.last_trap_time
+
+            if (self.owner.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or ((self.owner.attempts % 128) == 1 and self.memory.wavelength == 1389):
+                self.owner.need_to_retrap = True
                 added_delay = self.memory.retrap_time
                 emit_delay += added_delay
                 for event in self.owner.timeline.events:
                     if event.process.activation in ['schedule_atom_loss', 'lose_atom']:
-                        if event.process.owner.name == self.owner.name:
-                            self.owner.timeline.remove_event(event)
+                        self.owner.timeline.remove_event(event)
+                self.owner.last_trap_time = self.owner.timeline.now()
                 self.memory.schedule_atom_loss()
             emit_time = self.owner.schedule_qubit(self.middle, min_time + emit_delay)  # used to send memory
             emit_time_delta = emit_time - min_time - emit_delay
@@ -760,10 +764,21 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
         elif msg_type is GenerationMsgType.NEGOTIATE_ACK:  # non-primary --> primary
             # configure params
             emit_delay = self.memory.initialize_time + self.memory.cool_time + self.memory.state_prep_time + self.memory.excite_pulse_time
-            if (self.owner.attempts == 1) or ((self.owner.attempts % 128) == 1 and self.memory.wavelength == 1389):
+
+            time_in_trap = self.owner.timeline.now() - self.owner.last_trap_time
+
+            if (self.owner.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or ((self.owner.attempts % 128) == 1 and self.memory.wavelength == 1389):
+                self.owner.need_to_retrap = True
                 added_delay = self.memory.retrap_time
                 emit_delay += added_delay
+                # NOTE I think this is unecessary as both nodes reload at ~same time, so only the other will do this part, but for both
+                # for event in self.owner.timeline.events:
+                #     if event.process.activation in ['schedule_atom_loss', 'lose_atom']:
+                #         if event.process.owner.name == self.owner.name:
+                #             self.owner.timeline.remove_event(event)
+                self.owner.last_trap_time = self.owner.timeline.now()
                 self.memory.schedule_atom_loss()
+
             self.expected_time = msg.emit_time + self.qc_delay + self.memory.bin_separation # expected time for middle BSM node to receive the photon
             # we include photon_bin_separation above as need to consider getting a photon in the 'late' state
 
@@ -800,7 +815,7 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
                 # log.logger.warning("really got valid time.")   
                 self.psi_sign = sign 
             else:
-                log.logger.info('{} BSM trigger time not valid'.format(self.owner.name)) # CHANGED FROM WARNING TO INFO
+                log.logger.warning('{} BSM trigger time not valid'.format(self.owner.name)) # CHANGED FROM WARNING TO INFO
 
         else:
             raise Exception("Invalid message {} received by EG on node {}".format(msg_type, self.owner.name))
@@ -827,17 +842,19 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
         self.update_resource_manager(self.memory, MemoryInfo.ENTANGLED)
 
         for event in self.owner.timeline.events:
-            if event.process.activation in ['add_dark_count', 'record_detection', 'schedule_atom_loss', 'lose_atom', 'send_to_receiver']:
+            if event.process.activation in ['add_dark_count', 'record_detection', 'schedule_atom_loss', 'lose_atom', 'add_qfc_dark_count', 'send_to_receiver']:
                 self.owner.timeline.remove_event(event)
 
+        delay = self.owner.timeline.now() + self.memory.readout_time
         if self.primary:
             result, _ = self.memory.measure()
             process = Process(self.owner, "save_measurement", [self.psi_sign, result])
-            delay = self.owner.timeline.now() + self.memory.readout_time
             if self.owner.basis == "X":
                 delay += self.memory.raman_half_pi_pulse_time
             event = Event(delay, process)
             self.owner.timeline.schedule(event)
+        
+        self.owner.time_in_trap = delay - self.owner.last_trap_time
 
         # self.owner.entanglement_time = self.owner.timeline.now()
 

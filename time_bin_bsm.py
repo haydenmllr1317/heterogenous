@@ -216,8 +216,19 @@ class TimeBinBSM(BSM):
             May call get method of one or more attached detector(s).
             May alter the quantum state of photon and any stored photons.
         """
-
+        # this is counterproductive
         super().get(photon)
+
+        # while len(self.photons) > 1:
+        #     self.photons = self.photons[1:]
+
+        # if round((self.timeline.now() - self.photon_arrival_time)/self.encoding["bin_separation"]) == 1:
+        #     self.photons.append(photon)
+        # else:
+        #     self.photons = [photon]
+        
+        # self.photon_arrival_time = self.timeline.now()
+
         log.logger.debug(self.name + " recieved 'photon' quantum information")
         
         if len(self.photons) == 2:

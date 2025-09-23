@@ -522,6 +522,7 @@ class Yb(Memory):
 
         self.retrap_time = 500_000_000_000
         self.atom_lifetime = 40_000_000_000_000
+        self.lifetime_reload_time = 40_000_000_000_000
         
         if wavelength == 1389:
             self.initialize_time = 51_400_000
@@ -590,11 +591,14 @@ class Yb(Memory):
         self.excited_photon = photon
     
     def initialize_cool_prep(self) -> int:
-
-        if (self.owner.attempts == 1) or ((self.owner.attempts % 128) == 1 and self.wavelength == 1389):
+        if (self.owner.attempts == 1) or self.owner.need_to_retrap or ((self.owner.attempts % 128) == 1 and self.wavelength == 1389):
+            self.owner.need_to_retrap = False
             added_delay = self.retrap_time
             if self.wavelength == 1389:
                 self.atom_state = Yb1389States.P0
+                self.efficiency = self.original_memory_efficiency
+            elif self.wavelength == 556:
+                self.atom_state = Yb556States.S0
                 self.efficiency = self.original_memory_efficiency
         else:
             added_delay = 0
@@ -726,6 +730,7 @@ class Yb(Memory):
         if self.wavelength == 1389:
             self.atom_state = Yb1389States.LOST
         elif self.wavelength == 556:
+            log.logger.warning('Atom lost through lifetime expiration!')
             self.atom_state = Yb556States.LOST
 
 

@@ -342,7 +342,9 @@ class QuantumRouter(Node):
         self.basis = None
         self.meas_results = {"X_same": 0, "Z_same": 0}
         self.entanglement_time = None
-
+        self.last_trap_time = 0
+        self.need_to_retrap = False
+        self.time_in_trap = 0
 
     def receive_message(self, src: str, msg: "Message") -> None:
         """Determine what to do when a message is received, based on the msg.receiver.

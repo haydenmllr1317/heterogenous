@@ -32,17 +32,20 @@ ent = False
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-pce', '--photoncollectionefficiency', type=float, default=0.5, help='efficiency of photon collection into fiber')
-    parser.add_argument('-wavelength', '--photonwavelength', type=int, default=556, help='wavelength of emmitted photons')
+    parser.add_argument('-pce', '--photoncollectionefficiency', type=float, default=0.253, help='efficiency of photon collection into fiber')
+    parser.add_argument('-wavelength', '--photonwavelength', type=int, default=1389, help='wavelength of emmitted photons')
+    parser.add_argument('-t_retrap', '--time_to_retrap', type=int, default=40, help="Time atom has been in trap at which we want to retrap (in seconds).")
     parser.add_argument('-n', '--numtrials', type=int, default=200, help="number of entangled pairs we generated")
     parser.add_argument('-dtctor_dc', '--detectordarkcount', type=float, default=11.0, help="Dark count rate, in Hz, for the detector in the BSM.")
     parser.add_argument('-bsm_wvln', '--bsm_operating_wavelength', type=int, default=746, help="Photon wavelength BSM ideally operates at.")
     parser.add_argument('-qfc_eff', '--qfc_efficiency', type=float, default=0.9, help="Efficiency of our quantum frequency converters.")
-    parser.add_argument('-qfc_dc', '--qfc_dark_count_rate', type=float, default=1.0, help="Dark count rates (Hz) in our quantum frequency converters.")
+    parser.add_argument('-qfc_dc', '--qfc_dark_count_rate', type=float, default=10.0, help="Dark count rates (Hz) in our quantum frequency converters.")
+
 
     args = parser.parse_args()
     photon_collection_efficiency = args.photoncollectionefficiency
     wavelength = args.photonwavelength
+    retrap_time = args.time_to_retrap * 1e12
     n = args.numtrials
     detector_dark_count = args.detectordarkcount
     bsm_operating_wavelength = args.bsm_operating_wavelength
@@ -67,7 +70,7 @@ def main():
 
     # logging added here
     # log_filename = f'pce={photon_collection_efficiency},lambda={wavelength},num_trials={n}.log'
-    log_filename = 'crap.log'
+    log_filename = f'data/fid(qfc_dc)/qfc_dc={qfc_dc}.log'
     log.set_logger(__name__, tl, log_filename)
     log.set_logger_level('WARNING')
     log.track_module('generation')
@@ -102,6 +105,8 @@ def main():
     mem1.original_memory_efficiency = photon_collection_efficiency
     mem0.change_wavelength(wavelength)
     mem1.change_wavelength(wavelength)
+    mem0.time_to_retrap = retrap_time
+    mem0.time_to_retrap = retrap_time
 
     for i in range(2):
         qfc = network_topo.qfcs[i]
@@ -109,6 +114,7 @@ def main():
         qfc.output_wvln = bsm_operating_wavelength
         qfc.efficiency = qfc_eff
         qfc.dark_count = qfc_dc
+        qfc.bin_separation = mem0.bin_separation
 
     for i in range(n):
         if i == 0:
@@ -122,8 +128,10 @@ def main():
             node1.basis = "X"
         beginning = tl.now()
         starting_attempts = node0.attempts
+        node0.last_trap_time = beginning - node0.time_in_trap
+        node1.last_trap_time = beginning - node1.time_in_trap
         tl.init()
-        app0.start("router_1", beginning + start_time, beginning + 1_000_000_000_000_000, 1, 1)
+        app0.start("router_1", beginning + start_time, beginning + 1_000_000_000_000_000_000, 1, 1)
         log.logger.warning("Starting EG attempt at " + str(tl.time) + '.')
         tl.run()
 
