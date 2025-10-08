@@ -813,7 +813,7 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
 
             log.logger.debug("{} received MEAS_RES={} at time={:,}, expected={:,}, resolution={}, round={}".format(
                              self.owner.name, sign, time, self.expected_time, resolution, self.ent_round))
-            if valid_trigger_time(time, self.expected_time, resolution):   
+            if valid_trigger_time(time, self.expected_time, resolution + 338_000): # 338000 is bin size in this case (NOT FOR 556, HARDCODED FOR 1389)
                 # log.logger.warning("really got valid time.")   
                 self.psi_sign = sign 
             else:

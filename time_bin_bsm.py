@@ -255,19 +255,28 @@ class TimeBinBSM(BSM):
 
         detector_num = self.detectors.index(detector)
 
+        ################ NOTE #################
+        # we need the actual BIN SIZE here, not just the gap. it has width
+        # I am hard coding in 330ns (3D1 lifetime) and 8ns average excitation pulse time
+        # but I should make this pull those value from Memory module
+        average_bin_size = 338_000
+        #######################################
+
         while self.trigger_times: # list of recent detector trigger times
             dt = time - self.trigger_times[0] # time distance between current and oldest click
             detector_resolution = self.detectors[self.detector_hits[0]].time_resolution
+            
+            error_bar = detector_resolution + average_bin_size # uncertainty about allowed detector click time distance
 
-            if (dt-detector_resolution) >= self.encoding["bin_separation"]: # oldest and current clicks are too distant
+            if (dt-error_bar) >= self.encoding["bin_separation"]: # oldest and current clicks are too distant
                 # Too old → discard
                 self.trigger_times.pop(0)
                 self.photon_keys.pop(0)
                 self.detector_hits.pop(0)
             
-            elif (dt+detector_resolution) <= self.encoding['bin_separation']: # oldest and current clicks are too close
+            elif (dt+error_bar) <= self.encoding['bin_separation']: # oldest and current clicks are too close
                 # do nothing, wait for future clicks
-                pass 
+                break # was pass and switched it 
 
             else: # oldest click and current click are bin_seperation apart
                 # Matching interval → possible BSM event
@@ -289,8 +298,9 @@ class TimeBinBSM(BSM):
                         info = {'entity': 'BSM', 'info_type': 'BSM_res', 'res': 0, 'time': time}
                     else:
                         info = {'entity': 'BSM', 'info_type': 'BSM_res', 'res': 1, 'time': time}
-                    self.notify(info)
                     log.logger.warning('Potential dark count state (correct timing interval).')
+                    self.notify(info)
+                    
 
                 break  # stop as we found our appropriately separated clicks
 

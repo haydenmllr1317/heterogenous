@@ -543,6 +543,7 @@ class Yb(Memory):
             self.retrap_num = 128
             self.readout_time = 37_510_000_000
             self.qchannel_time_correction = 9_000 # this is to make bin_separation divisible by qchannel frequency
+            self.state_lifetime = 330_000 # THIS IS IMPORTANT: HOW LONG 3D1 decay on average lasts, thus with the excite pulse time is the bin width
         elif wavelength == 556:
             self.initialize_time = 20_000_000
             self.cool_time = 1_400_000_000
