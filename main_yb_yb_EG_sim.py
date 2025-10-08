@@ -26,20 +26,17 @@ import argparse
 import time
 from memory import MemoryArray
 
-
-
-ent = False
-
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-pce', '--photoncollectionefficiency', type=float, default=0.253, help='efficiency of photon collection into fiber')
+    parser.add_argument('-pce', '--photoncollectionefficiency', type=float, default=1.0, help='efficiency of photon collection into fiber')
     parser.add_argument('-wavelength', '--photonwavelength', type=int, default=1389, help='wavelength of emmitted photons')
     parser.add_argument('-t_retrap', '--time_to_retrap', type=int, default=40, help="Time atom has been in trap at which we want to retrap (in seconds).")
     parser.add_argument('-n', '--numtrials', type=int, default=200, help="number of entangled pairs we generated")
-    parser.add_argument('-dtctor_dc', '--detectordarkcount', type=float, default=11.0, help="Dark count rate, in Hz, for the detector in the BSM.")
+    parser.add_argument('-dtctor_dc', '--detectordarkcount', type=float, default=1.0, help="Dark count rate, in Hz, for the detector in the BSM.")
+    parser.add_argument('-dtctor_eff', '--detectorefficiency', type=float, default=1.0, help="Efficiency for the detector in the BSM.")
     parser.add_argument('-bsm_wvln', '--bsm_operating_wavelength', type=int, default=746, help="Photon wavelength BSM ideally operates at.")
-    parser.add_argument('-qfc_eff', '--qfc_efficiency', type=float, default=0.9, help="Efficiency of our quantum frequency converters.")
-    parser.add_argument('-qfc_dc', '--qfc_dark_count_rate', type=float, default=10.0, help="Dark count rates (Hz) in our quantum frequency converters.")
+    parser.add_argument('-qfc_eff', '--qfc_efficiency', type=float, default=1.0, help="Efficiency of our quantum frequency converters.")
+    parser.add_argument('-qfc_dc', '--qfc_dark_count_rate', type=float, default=50.0, help="Dark count rates (Hz) in our quantum frequency converters.")
 
 
     args = parser.parse_args()
@@ -48,6 +45,7 @@ def main():
     retrap_time = args.time_to_retrap * 1e12
     n = args.numtrials
     detector_dark_count = args.detectordarkcount
+    detector_efficiency = args.detectorefficiency
     bsm_operating_wavelength = args.bsm_operating_wavelength
     qfc_eff = args.qfc_efficiency
     qfc_dc = args.qfc_dark_count_rate
@@ -64,13 +62,14 @@ def main():
 
     # use encoding_name to grab encoding-appropriate BSM object
     bsm = network_topo.get_nodes_by_type(RouterNetTopo.BSM_NODE)[0].get_components_by_type(encoding_name)[0]
-    bsm.update_detectors_params('efficiency', 0.85) # according to Joaquin should be .85
+    bsm.update_detectors_params('efficiency', detector_efficiency) # according to Joaquin should be .85
     bsm.update_detectors_params('dark_count', detector_dark_count)
 
 
     # logging added here
     # log_filename = f'pce={photon_collection_efficiency},lambda={wavelength},num_trials={n}.log'
-    log_filename = f'data/fid(qfc_dc)/qfc_dc={qfc_dc}.log'
+    # log_filename = f'data/fid(qfc_dc)/qfc_dc={qfc_dc}.log'
+    log_filename = 'crap.log'
     log.set_logger(__name__, tl, log_filename)
     log.set_logger_level('WARNING')
     log.track_module('generation')
@@ -131,7 +130,7 @@ def main():
         node0.last_trap_time = beginning - node0.time_in_trap
         node1.last_trap_time = beginning - node1.time_in_trap
         tl.init()
-        app0.start("router_1", beginning + start_time, beginning + 1_000_000_000_000_000_000, 1, 1)
+        app0.start("router_1", beginning + start_time, beginning + 1_000_000_000_000_000, 1, 1)
         log.logger.warning("Starting EG attempt at " + str(tl.time) + '.')
         tl.run()
 

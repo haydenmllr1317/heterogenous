@@ -89,9 +89,13 @@ class Detector(Entity):
             # if we measure |0>, return (do not record detection)
             if not res[key]:
                 return
+            
 
         if self.get_generator().random() < self.efficiency:
-            self.record_detection()
+            if 'qstate_key' in kwargs:
+                self.record_detection(qstate = kwargs['qstate_key'])
+            else:
+                self.record_detection()
         else:
             log.logger.debug(f'Photon loss in detector {self.name}')
 
@@ -117,19 +121,26 @@ class Detector(Entity):
         self.timeline.schedule(event2)
         # print(time)
 
-    def record_detection(self):
+    def record_detection(self, **kwargs):
         """Method to record a detection event.
 
         Will calculate if detection succeeds (by checking if we have passed `next_detection_time`)
         and will notify observers with the detection time (rounded to the nearest multiple of detection frequency).
         """
 
+        # NOTE should get parameters for count_rate and time_resolution from Joaquin
+
         now = self.timeline.now()
 
         if now > self.next_detection_time:
             self.recorded_detection_count += 1
             time = round(now / self.time_resolution) * self.time_resolution
-            self.notify({'time': time})
+            # print(str(time-now))
+            if 'qstate' in kwargs:
+                info = {'time': time, 'qstate': kwargs['qstate']}
+            else:
+                info = {'time': time}
+            self.notify(info)
             self.next_detection_time = now + (1e12 / self.count_rate)  # period in ps
         else:
             self.undetectable_photon_count += 1

@@ -485,6 +485,11 @@ class QuantumRouter(Node):
         self.meas_results[self.basis + "_same"] += same
 
     def get_fidelity(self, num_trials: int):
+        # fidelity calculation derived from:
+        # https://static-content.springer.com/esm/art%3A10.1038%2Fnature12016/MediaObjects/41586_2013_BFnature12016_MOESM10_ESM.pdf
+        # which is in supplementary information of this paper:
+        # https://www.nature.com/articles/nature12016#Sec2
+        
         rhoZ_same = 2*self.meas_results["Z_same"]/num_trials
         rhoZ_diff = 1 - rhoZ_same
         rhoX_same = 2*self.meas_results["X_same"]/num_trials

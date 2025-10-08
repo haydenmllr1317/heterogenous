@@ -8,7 +8,22 @@ from custom_node import Node, BSMNode
 from sequence.utils import log
 
 class QFC(Entity):
-    def __init__(self, name: str, timeline: Timeline, receiver: Entity, input_wavelength = None, output_wavelength = None, efficiency = None, dark_count = None):
+    '''
+    QFC stands for Quantum Frequency Converter. QFC is a module that is intended to convert a
+    photon's wavelength from an input to an output value, as well as add in a dark count
+    associated with background radiation.
+
+    Attributes:
+        name (str): Name of QFC object
+        timeline (Timeline): Timeline QFC object operates on.
+        receiver (Entity): Object to receive photons from QFC after conversion/dark count.
+        input_wvln (int): Wavelength of photons QFC is meant to consume.
+        output_wvln (int): Wavelength of photons QFC produces.
+        efficiency (float): Number between 0 and 1 indicating probability that photon is converted properly.
+        dark_count (float): Frequency (in Hz) of spontaneous photon emission from QFC.
+        bin_separation (int): Separation time (in ps) between photon emission bins.
+    '''
+    def __init__(self, name: str, timeline: Timeline, receiver: str, input_wavelength = None, output_wavelength = None, efficiency = None, dark_count = None):
         super().__init__(name, timeline)
         self.receiver = receiver
         self.input_wvln = input_wavelength
@@ -19,7 +34,11 @@ class QFC(Entity):
         self.bin_separation = None
 
     def init(self) -> None:
-        self.add_qfc_dark_count()
+        time_to_next = int(self.get_generator().exponential(
+                1 / self.dark_count) * 1e12)  # time to first dark count
+        process = Process(self, 'add_qfc_dark_count', [])
+        event = Event(self.timeline.now() + time_to_next, process)
+        self.timeline.schedule(event)
 
     def receive_qubit(self, source_name: str, photon: Photon):
         log.logger.info(f'{self.name} received a photon from {source_name}')
@@ -32,9 +51,10 @@ class QFC(Entity):
         # except Exception as e:
         #     raise ValueError(f"{self.name} isn't equipped to transform between {self.input_wvln} and {self.output_wvln}.")
         if photon.wavelength == self.input_wvln:
-            efficiency = self.efficiency
-            photon.add_loss(1-efficiency)
-            self.send_to_receiver(photon)
+            if photon.loss != 0:
+                raise ValueError('Photon has unexpected nonzero loss.')
+            if self.get_generator().random() <= self.efficiency:
+                self.send_to_receiver(photon)
     
     def add_qfc_dark_count(self) -> None:
         """Method to schedule false positive detection events.
@@ -50,18 +70,25 @@ class QFC(Entity):
         time_to_next = int(self.get_generator().exponential(
                 1 / self.dark_count) * 1e12)  # time to next dark count
         time = time_to_next + self.timeline.now()  # time of next dark count
+        self.send_to_receiver()
         process1 = Process(self, "add_qfc_dark_count", [])  # schedule photon detection and dark count add in future
-        process2 = Process(self, "send_to_receiver", [])
         event1 = Event(time, process1)
-        event2 = Event(time, process2)
         self.timeline.schedule(event1)
-        self.timeline.schedule(event2)
 
     def send_to_receiver(self, photon: Photon = None):
-        if not photon:
+        """
+        Method to send a photon to the recieving entity.
+
+        Args:
+        photon (Photon): Input Photon object whose frequency we converted. If
+                         event is a dark count, no Photon will be provided.
+        """
+        if not photon: # if dark count, no input photon provided
             encoding = {'name': 'yb_time_bin', 'bin_separation': self.bin_separation, 'raw_fidelity': 1.0}
-            photon = Photon(name='', timeline=self.timeline, wavelength=self.output_wvln, encoding_type=encoding, use_qm=True)
+            photon = Photon(name='', timeline=self.timeline, wavelength=self.output_wvln, encoding_type=encoding, use_qm=False)
             photon.add_loss(float(0))
+
+        # TODO: don't need to search entity by name, just attach to _receivers likst and pull _receivers[0]
 
         dst = self.timeline.get_entity_by_name(self.receiver)
 
@@ -72,3 +99,6 @@ class QFC(Entity):
         else:
             raise ValueError(f'{dst.name} is an invalid destination for {self.name}.')
         
+
+
+# TODO Make QT a subclass of QFC

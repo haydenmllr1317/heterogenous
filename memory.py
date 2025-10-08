@@ -25,6 +25,8 @@ from sequence.utils import log
 from generation import EntanglementGenerationTimeBin as EGTB
 from enum import Enum, auto
 from sequence.components.circuit import Circuit
+from sequence.components.bsm import _set_state_with_fidelity
+from math import sqrt
 
 _meas_circuit = Circuit(2)
 _meas_circuit.measure(0)
@@ -35,6 +37,10 @@ _H_circuit.h(1)
 # _sDag_circuit = Circuit(2)
 # _sDag_circuit.sdg(0)
 # _sDag_circuit.sdg(1)
+_psi_plus = [complex(0), complex(sqrt(1 / 2)), complex(sqrt(1 / 2)), complex(0)]
+
+_photon_meas_circuit = Circuit(1)
+_photon_meas_circuit.measure(0)
 
 
 # define helper functions for analytical BDS decoherence implementation, reference see recurrence protocol paper
@@ -536,6 +542,7 @@ class Yb(Memory):
             self.atom_state = Yb1389States.P0
             self.retrap_num = 128
             self.readout_time = 37_510_000_000
+            self.qchannel_time_correction = 9_000 # this is to make bin_separation divisible by qchannel frequency
         elif wavelength == 556:
             self.initialize_time = 20_000_000
             self.cool_time = 1_400_000_000
@@ -546,10 +553,11 @@ class Yb(Memory):
             self.bin_gap = 5_300_000 # this is 6 microseconds separation minus 0.7 microseconds raman pi pulse
             self.atom_state = Yb556States.S0
             self.readout_time = 30_000_000_000
+            self.qchannel_time_correction = TBD # this is to make bin_separation divisible by qchannel frequency
         else:
             raise ValueError('Wavelength ' + str(wavelength) + ' is not supported for ' + self.name + '.')
         
-        self.bin_separation = self.excite_pulse_time + self.bin_gap + self.phase_flip_time
+        self.bin_separation = self.excite_pulse_time + self.bin_gap + self.phase_flip_time + self.qchannel_time_correction
 
 
 
@@ -567,8 +575,10 @@ class Yb(Memory):
         # create photon
         if encoding_type == "time_bin":
             yb_encoding = {'name': 'yb_time_bin', 'bin_separation': self.bin_separation, 'raw_fidelity': 1.0}
+            # photon_key = self.timeline.quantum_manager.new()
             photon = Photon("", self.timeline, wavelength=wavelength, location=self.name, encoding_type=yb_encoding, 
             quantum_state=self.qstate_key, use_qm=True) #TODO ADD A WAY TO POINT TOWARDS THE ACTUAL FOUR_VECTOR ENTANGLED STATE (FOR ATOM AND PHOTON)
+            # self.timeline.quantum_manager.set([photon_key], EGTB._plus_state)
             # keep track of memory initialization time
             self.generation_time = self.timeline.now()
             self.last_update_time = self.timeline.now()
@@ -577,18 +587,38 @@ class Yb(Memory):
             raise ValueError("Invalid encoding type {} specified for memory.exite()".format(encoding_type))
 
         photon.timeline = None  # facilitate cross-process exchange of photons
-        photon.is_null = True
-        photon.add_loss(1 - self.efficiency)
+        # photon.is_null = True # NOTE I changed this cuz I don't think we need
+        # photon.add_loss(1 - self.efficiency)
+
+        if photon.loss != 0:
+            raise ValueError(f'{photon.name} just created, should have zero loss, not {photon.loss}.')
 
         if self.frequency > 0:
             period = 1e12 / self.frequency
             self.next_excite_time = self.timeline.now() + period
 
-        # ADD: send to frequency converter
-
-        # send to receiver
-        self._receivers[0].get(photon, dst=dst)
-        self.excited_photon = photon
+        if self.get_generator().random() < self.efficiency:
+            qm = self.timeline.quantum_manager
+            photon.loss = 0
+            key = photon.quantum_state
+            meas = qm.run_circuit(_photon_meas_circuit, [key], self.get_generator().random())[key]
+            # _set_state_with_fidelity([self.qstate_key, key], _psi_plus, photon.encoding_type["raw_fidelity"],
+            #                                    self.get_generator(), qm)
+            if meas == 0: # early photon
+                log.logger.info(f'Photon emmited from {self.name} in early time bin.')
+                # send to receiver
+                self._receivers[0].get(photon, dst=dst)
+                self.excited_photon = photon
+            elif meas == 1:
+                log.logger.info(f'Photon emmited from {self.name} in late time bin.')
+                process = Process(self._receivers[0], "get", [photon], {'dst': dst}) #, [photon, dst=dst])
+                event = Event(self.timeline.now() + self.bin_separation, process)
+                self.timeline.schedule(event)
+                self.excited_photon = photon
+            else:
+                raise ValueError('Measurement should only be 0 (early) or 1 (late).')
+        else:
+            log.logger.debug(f'{photon.name} lost in memory.')
     
     def initialize_cool_prep(self) -> int:
         if (self.owner.attempts == 1) or self.owner.need_to_retrap or ((self.owner.attempts % 128) == 1 and self.wavelength == 1389):

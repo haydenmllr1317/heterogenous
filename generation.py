@@ -543,7 +543,7 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
         # network and hardware info
         self.fidelity: float = memory.raw_fidelity
         self.qc_delay: int = 0
-        self.expected_time: int = -1   # expected time for middle BSM node to receive the photon
+        self.expected_time: int = -1   # expected time for late photon to arrive at detector
 
         # memory internal info
         self.ent_round = 0  # keep track of current stage of protocol
@@ -735,6 +735,7 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
                 self.owner.last_trap_time = self.owner.timeline.now()
                 self.memory.schedule_atom_loss()
             emit_time = self.owner.schedule_qubit(self.middle, min_time + emit_delay)  # used to send memory
+            self.owner.schedule_qubit(self.middle, emit_time + self.memory.bin_separation)
             emit_time_delta = emit_time - min_time - emit_delay
             self.expected_time = emit_time + self.qc_delay + self.memory.bin_separation  # need to be prepared for worst case scenario - a late photon
            
@@ -787,6 +788,7 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
 
             # schedule emit
             emit_time = self.owner.schedule_qubit(self.middle, msg.emit_time)
+            self.owner.schedule_qubit(self.middle, msg.emit_time + self.memory.bin_separation)
             assert emit_time == (msg.emit_time), \
                 "Invalid eg emit times {} {} {}".format(emit_time, msg.emit_time, self.owner.timeline.now())
 

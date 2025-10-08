@@ -101,3 +101,15 @@ while len(tasks) > 0 or len(ps) > 0:
             else:
                 get_output(p)
         ps = new_ps
+
+
+# TODO generate plots with these figures:
+# Yb-Yb entanglement fidelity as function of QFC dark count rate
+# Yb-Yb entanglement fidelity as function of QFC efficiency
+# Yb-Yb 1389 vs 556 entanglement generation time
+
+# less necessary
+# 556 ideal reload time (ent time as function of reload time)
+
+# skip for now
+# Transmon-Transom and/or Transmon-Yb 
