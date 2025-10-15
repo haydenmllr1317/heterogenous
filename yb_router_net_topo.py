@@ -234,4 +234,5 @@ class RouterNetTopo(Topo):
             name = qfc[Topo.NAME]
             destination = qfc[self.DST]
             converter = QFC(name,self.tl,destination)
+            converter.add_receiver(self.nodes[self.BSM_NODE][0])
             self.qfcs.append(converter)

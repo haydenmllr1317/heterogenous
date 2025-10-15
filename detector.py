@@ -92,10 +92,7 @@ class Detector(Entity):
             
 
         if self.get_generator().random() < self.efficiency:
-            if 'qstate_key' in kwargs:
-                self.record_detection(qstate = kwargs['qstate_key'])
-            else:
-                self.record_detection()
+            self.record_detection(**kwargs)
         else:
             log.logger.debug(f'Photon loss in detector {self.name}')
 
@@ -136,10 +133,7 @@ class Detector(Entity):
             self.recorded_detection_count += 1
             time = round(now / self.time_resolution) * self.time_resolution
             # print(str(time-now))
-            if 'qstate' in kwargs:
-                info = {'time': time, 'qstate': kwargs['qstate']}
-            else:
-                info = {'time': time}
+            info = {'time': time, **kwargs}
             self.notify(info)
             self.next_detection_time = now + (1e12 / self.count_rate)  # period in ps
         else:

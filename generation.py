@@ -720,8 +720,8 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
 
             # NOTE NEED TO CHANGE THIS FROM EM_DELAY TO SOMETHING IN YB CLASS
             
-            # get expected arrival time of a late photon
-            emit_delay = self.memory.initialize_time + self.memory.cool_time + self.memory.state_prep_time + self.memory.excite_pulse_time
+            # get expected arrival time of an early photon
+            emit_delay = self.memory.initialize_time + self.memory.cool_time + self.memory.state_prep_time
 
             time_in_trap = self.owner.timeline.now() - self.owner.last_trap_time
 
@@ -735,20 +735,22 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
                 self.owner.last_trap_time = self.owner.timeline.now()
                 self.memory.schedule_atom_loss()
             emit_time = self.owner.schedule_qubit(self.middle, min_time + emit_delay)  # used to send memory
-            self.owner.schedule_qubit(self.middle, emit_time + self.memory.bin_separation)
-            emit_time_delta = emit_time - min_time - emit_delay
+            # self.owner.schedule_qubit(self.middle, emit_time + self.memory.bin_separation) ## NO LONGER NEED AS SENDING ONLY IN FIRST TIME BIN 
+            # emit_time_delta = emit_time - min_time - emit_delay
             self.expected_time = emit_time + self.qc_delay + self.memory.bin_separation  # need to be prepared for worst case scenario - a late photon
            
 
             # schedule emit
             process = Process(self, "emit_event", [])
-            event = Event(min_time + emit_time_delta, process) # NOTE changed to min_time from emit_time
+            # CHANGED:
+            # event = Event(min_time + emit_time_delta, process) # NOTE changed to min_time from emit_time
+            event = Event(min_time, process)
             self.owner.timeline.schedule(event)
             self.scheduled_events.append(event)
 
             # send negotiate_ack
             other_emit_time = emit_time + self.qc_delay - other_qc_delay
-            message = EntanglementGenerationMessage(GenerationMsgType.NEGOTIATE_ACK, self.remote_protocol_name, EntanglementGenerationTimeBinYb, emit_time=other_emit_time, min_time=(min_time+emit_time_delta))
+            message = EntanglementGenerationMessage(GenerationMsgType.NEGOTIATE_ACK, self.remote_protocol_name, EntanglementGenerationTimeBinYb, emit_time=other_emit_time, min_time=min_time) # USED To BE min_time + emit_time_delta
             self.owner.send_message(src, message)
 
 
@@ -764,7 +766,7 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
 
         elif msg_type is GenerationMsgType.NEGOTIATE_ACK:  # non-primary --> primary
             # configure params
-            emit_delay = self.memory.initialize_time + self.memory.cool_time + self.memory.state_prep_time + self.memory.excite_pulse_time
+            emit_delay = self.memory.initialize_time + self.memory.cool_time + self.memory.state_prep_time
 
             time_in_trap = self.owner.timeline.now() - self.owner.last_trap_time
 
@@ -788,7 +790,7 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
 
             # schedule emit
             emit_time = self.owner.schedule_qubit(self.middle, msg.emit_time)
-            self.owner.schedule_qubit(self.middle, msg.emit_time + self.memory.bin_separation)
+            # self.owner.schedule_qubit(self.middle, msg.emit_time + self.memory.bin_separation) # NOT DOING ANYMORE
             assert emit_time == (msg.emit_time), \
                 "Invalid eg emit times {} {} {}".format(emit_time, msg.emit_time, self.owner.timeline.now())
 
@@ -817,7 +819,7 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
                 # log.logger.warning("really got valid time.")   
                 self.psi_sign = sign 
             else:
-                log.logger.warning('{} BSM trigger time not valid'.format(self.owner.name)) # CHANGED FROM WARNING TO INFO
+                log.logger.info('{} BSM trigger time not valid'.format(self.owner.name)) # CHANGED FROM WARNING TO INFO
 
         else:
             raise Exception("Invalid message {} received by EG on node {}".format(msg_type, self.owner.name))
@@ -844,19 +846,19 @@ class EntanglementGenerationTimeBinYb(EntanglementProtocol):
         self.update_resource_manager(self.memory, MemoryInfo.ENTANGLED)
 
         for event in self.owner.timeline.events:
-            if event.process.activation in ['add_dark_count', 'record_detection', 'schedule_atom_loss', 'lose_atom', 'add_qfc_dark_count', 'send_to_receiver']:
+            if event.process.activation in ['add_dark_count', 'record_detection', 'schedule_atom_loss', 'lose_atom']:
                 self.owner.timeline.remove_event(event)
 
-        delay = self.owner.timeline.now() + self.memory.readout_time
+        time_to_measurement_results = self.owner.timeline.now() + self.memory.readout_time # current time + time it takes to measure
         if self.primary:
             result, _ = self.memory.measure()
             process = Process(self.owner, "save_measurement", [self.psi_sign, result])
             if self.owner.basis == "X":
-                delay += self.memory.raman_half_pi_pulse_time
-            event = Event(delay, process)
+                time_to_measurement_results += self.memory.raman_half_pi_pulse_time
+            event = Event(time_to_measurement_results, process)
             self.owner.timeline.schedule(event)
         
-        self.owner.time_in_trap = delay - self.owner.last_trap_time
+        self.owner.time_in_trap = time_to_measurement_results - self.owner.last_trap_time
 
         # self.owner.entanglement_time = self.owner.timeline.now()
 

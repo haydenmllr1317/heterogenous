@@ -77,6 +77,7 @@ class Photon:
         self.is_null: bool = False
         self.loss = 0
         self.use_qm = use_qm
+        self.mode_count = 1 # number of photons in this mode
 
         self.quantum_state: Union[State, int] = -1
         if self.use_qm:
@@ -184,3 +185,7 @@ class Photon:
     def add_loss(self, loss: float):
         assert 0 <= loss <= 1
         self.loss = 1 - (1 - self.loss) * (1 - loss)
+
+    def add_mode_count(self, count: int):
+        assert 0 <= count
+        self.mode_count += count

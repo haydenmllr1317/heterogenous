@@ -28,15 +28,15 @@ from memory import MemoryArray
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-pce', '--photoncollectionefficiency', type=float, default=0.01, help='efficiency of photon collection into fiber')
+    parser.add_argument('-pce', '--photoncollectionefficiency', type=float, default=0.1, help='efficiency of photon collection into fiber')
     parser.add_argument('-wavelength', '--photonwavelength', type=int, default=1389, help='wavelength of emmitted photons')
     parser.add_argument('-t_retrap', '--time_to_retrap', type=int, default=40, help="Time atom has been in trap at which we want to retrap (in seconds).")
     parser.add_argument('-n', '--numtrials', type=int, default=200, help="number of entangled pairs we generated")
-    parser.add_argument('-dtctor_dc', '--detectordarkcount', type=float, default=0.001, help="Dark count rate, in Hz, for the detector in the BSM.")
+    parser.add_argument('-dtctor_dc', '--detectordarkcount', type=float, default=11.0, help="Dark count rate, in Hz, for the detector in the BSM.")
     parser.add_argument('-dtctor_eff', '--detectorefficiency', type=float, default=1.0, help="Efficiency for the detector in the BSM.")
     parser.add_argument('-bsm_wvln', '--bsm_operating_wavelength', type=int, default=746, help="Photon wavelength BSM ideally operates at.")
     parser.add_argument('-qfc_eff', '--qfc_efficiency', type=float, default=0.5, help="Efficiency of our quantum frequency converters.")
-    parser.add_argument('-qfc_dc', '--qfc_dark_count_rate', type=float, default=5000.0, help="Dark count rates (Hz) in our quantum frequency converters.")
+    parser.add_argument('-qfc_noise', '--qfc_noise', type=float, default=0.2, help="Noise, in number of noise photons per signal photon, in our QFC.")
 
 
     args = parser.parse_args()
@@ -48,7 +48,7 @@ def main():
     detector_efficiency = args.detectorefficiency
     bsm_operating_wavelength = args.bsm_operating_wavelength
     qfc_eff = args.qfc_efficiency
-    qfc_dc = args.qfc_dark_count_rate
+    qfc_noise = args.qfc_noise
 
 
     # NOTE: I don't think I need encodings anymore?
@@ -107,12 +107,22 @@ def main():
     mem0.time_to_retrap = retrap_time
     mem0.time_to_retrap = retrap_time
 
+    if mem0.bin_width == mem1.bin_width:
+        bsm.average_bin_size = mem0.bin_width
+    else:
+        raise ValueError(f'Memory must operate with same bin size, yet mem0={mem0.bin_width} and mem1 = {mem1.bin_width}')
+    
+    if mem0.bin_separation == mem1.bin_separation:
+        bsm.time_bin_separation = mem0.bin_separation
+    else:
+        raise ValueError(f'Memory must operate with same bin separation, yet mem0={mem0.bin_separation} and mem1 = {mem1.bin_separation}')
+
     for i in range(2):
         qfc = network_topo.qfcs[i]
         qfc.input_wvln = wavelength
         qfc.output_wvln = bsm_operating_wavelength
         qfc.efficiency = qfc_eff
-        qfc.dark_count = qfc_dc
+        qfc.noise = qfc_noise
         qfc.bin_separation = mem0.bin_separation
 
     for i in range(n):
@@ -142,8 +152,6 @@ def main():
         log.logger.warning(f'Entanglement num {i+1} completed in {actual_time} seconds.')
         log.logger.warning(f'Entanglement num {i+1} took {traversed_attempts} attempts.')
         total_time += actual_time
-
-
 
     fid = node1.get_fidelity(n)
 

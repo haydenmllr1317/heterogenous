@@ -555,9 +555,11 @@ class Yb(Memory):
             self.atom_state = Yb556States.S0
             self.readout_time = 30_000_000_000
             self.qchannel_time_correction = TBD # this is to make bin_separation divisible by qchannel frequency
+            self.state_lifetime = 870_000 # THIS IS IMPORTANT: HOW LONG 3P1? decay on average lasts, thus with excite pulse time is the bin width
         else:
             raise ValueError('Wavelength ' + str(wavelength) + ' is not supported for ' + self.name + '.')
         
+        self.bin_width = self.excite_pulse_time + self.state_lifetime # width of our bin, sum of time for excite pulse and time for decay
         self.bin_separation = self.excite_pulse_time + self.bin_gap + self.phase_flip_time + self.qchannel_time_correction
 
 
@@ -589,37 +591,45 @@ class Yb(Memory):
 
         photon.timeline = None  # facilitate cross-process exchange of photons
         # photon.is_null = True # NOTE I changed this cuz I don't think we need
-        # photon.add_loss(1 - self.efficiency)
 
-        if photon.loss != 0:
-            raise ValueError(f'{photon.name} just created, should have zero loss, not {photon.loss}.')
+        # if photon.loss != 0:
+        #     raise ValueError(f'{photon.name} just created, should have zero loss, not {photon.loss}.')
 
         if self.frequency > 0:
             period = 1e12 / self.frequency
             self.next_excite_time = self.timeline.now() + period
 
-        if self.get_generator().random() < self.efficiency:
-            qm = self.timeline.quantum_manager
-            photon.loss = 0
-            key = photon.quantum_state
-            meas = qm.run_circuit(_photon_meas_circuit, [key], self.get_generator().random())[key]
-            # _set_state_with_fidelity([self.qstate_key, key], _psi_plus, photon.encoding_type["raw_fidelity"],
-            #                                    self.get_generator(), qm)
-            if meas == 0: # early photon
-                log.logger.info(f'Photon emmited from {self.name} in early time bin.')
-                # send to receiver
-                self._receivers[0].get(photon, dst=dst)
-                self.excited_photon = photon
-            elif meas == 1:
-                log.logger.info(f'Photon emmited from {self.name} in late time bin.')
-                process = Process(self._receivers[0], "get", [photon], {'dst': dst}) #, [photon, dst=dst])
-                event = Event(self.timeline.now() + self.bin_separation, process)
-                self.timeline.schedule(event)
-                self.excited_photon = photon
-            else:
-                raise ValueError('Measurement should only be 0 (early) or 1 (late).')
-        else:
-            log.logger.debug(f'{photon.name} lost in memory.')
+        photon.add_loss(1 - self.efficiency)
+        self._receivers[0].get(photon, dst=dst)
+        self.excited_photon = photon
+
+        # NO LONGER CHECKING FOR LOSS HERE
+        # if self.get_generator().random() < self.efficiency:
+        #     photon.loss = 0
+        #     self._receivers[0].get(photon, dst=dst)
+        #     self.excited_photon = photon
+
+        #     '''  ################# OLD METHOD, NOT USING
+        #     key = photon.quantum_state
+        #     meas = qm.run_circuit(_photon_meas_circuit, [key], self.get_generator().random())[key]
+        #     # _set_state_with_fidelity([self.qstate_key, key], _psi_plus, photon.encoding_type["raw_fidelity"],
+        #     #                                    self.get_generator(), qm)
+        #     if meas == 0: # early photon
+        #         log.logger.info(f'Photon emmited from {self.name} in early time bin.')
+        #         # send to receiver
+        #         self._receivers[0].get(photon, dst=dst)
+        #         self.excited_photon = photon
+        #     elif meas == 1:
+        #         log.logger.info(f'Photon emmited from {self.name} in late time bin.')
+        #         process = Process(self._receivers[0], "get", [photon], {'dst': dst}) #, [photon, dst=dst])
+        #         event = Event(self.timeline.now() + self.bin_separation, process)
+        #         self.timeline.schedule(event)
+        #         self.excited_photon = photon
+        #     else:
+        #         raise ValueError('Measurement should only be 0 (early) or 1 (late).')
+        #     '''
+        # else:
+        #     log.logger.debug(f'{photon.name} lost in memory.')
     
     def initialize_cool_prep(self) -> int:
         if (self.owner.attempts == 1) or self.owner.need_to_retrap or ((self.owner.attempts % 128) == 1 and self.wavelength == 1389):
@@ -648,7 +658,7 @@ class Yb(Memory):
             self.update_state(EGTB._plus_state)
         log.logger.info('Atom ' + str(self.name) + ' succesfully prepared in |+>.')
 
-        total_time = self.initialize_time + self.cool_time + self.state_prep_time + self.excite_pulse_time + added_delay
+        total_time = self.initialize_time + self.cool_time + self.state_prep_time + added_delay
         return total_time
     
     def atom_transition(self) -> bool:
@@ -730,6 +740,8 @@ class Yb(Memory):
             self.atom_state = Yb1389States.P0
             self.retrap_num = 128
             self.readout_time = 37_510_000_000
+            self.qchannel_time_correction = 9_000 # this is to make bin_separation divisible by qchannel frequency
+            self.state_lifetime = 330_000 # THIS IS IMPORTANT: HOW LONG 3D1 decay on average lasts, thus with the excite pulse time is the bin width
         elif wavelength == 556:
             self.initialize_time = 20_000_000
             self.cool_time = 1_400_000_000
@@ -740,8 +752,13 @@ class Yb(Memory):
             self.bin_gap = 5_300_000 # this is 6 microseconds separation minus 0.7 microseconds raman pi pulse
             self.atom_state = Yb556States.S0
             self.readout_time = 30_000_000_000
+            self.qchannel_time_correction = TBD # this is to make bin_separation divisible by qchannel frequency
+            self.state_lifetime = 870_000 # THIS IS IMPORTANT: HOW LONG 3P1? decay on average lasts, thus with excite pulse time is the bin width
         else:
             raise ValueError('Wavelength ' + str(wavelength) + ' is not supported for ' + self.name + '.')
+        
+        self.bin_width = self.excite_pulse_time + self.state_lifetime # width of our bin, sum of time for excite pulse and time for decay
+        self.bin_separation = self.excite_pulse_time + self.bin_gap + self.phase_flip_time + self.qchannel_time_correction
         
         self.wavelength = wavelength
 
