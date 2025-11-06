@@ -22,11 +22,12 @@ from sequence.kernel.process import Process
 from encoding import single_atom, single_heralded, time_bin, yb_time_bin
 from sequence.constants import EPSILON
 from sequence.utils import log
-from generation import EntanglementGenerationTimeBin as EGTB
+# from generation import EntanglementGenerationTimeBin as EGTB
 from enum import Enum, auto
 from sequence.components.circuit import Circuit
 from sequence.components.bsm import _set_state_with_fidelity
-from math import sqrt
+from sequence.components.memory import Memory
+from math import sqrt, e
 
 _meas_circuit = Circuit(2)
 _meas_circuit.measure(0)
@@ -165,340 +166,6 @@ class MemoryArray(Entity):
         return self.memories[index]
 
 
-class Memory(Entity):
-    """Individual single-atom memory.
-
-    This class models a single-atom memory, where the quantum state is stored as the spin of a single ion.
-    This class will replace the older implementation once completed.
-
-    Attributes:
-        name (str): label for memory instance.
-        timeline (Timeline): timeline for simulation.
-        fidelity (float):     (current) fidelity of memory.
-        raw_fidelity (float): (initial) fidelity of memory.
-        frequency (float): maximum frequency at which memory can be excited.
-        efficiency (float): probability of emitting a photon when excited.
-        coherence_time (float): average usable lifetime of memory (in seconds). Negative value means infinite coherence time.
-        wavelength (float): wavelength (in nm) of emitted photons.
-        qstate_key (int): key for associated quantum state in timeline's quantum manager.
-        memory_array (MemoryArray): memory array aggregating current memory.
-        entangled_memory (Dict[str, Any]): tracks entanglement state of memory.
-        docoherence_errors (List[float]): assumeing the memory (qubit) decoherence channel being Pauli channel,
-            Probability distribution of X, Y, Z Pauli errors;
-            (default value is -1, meaning not using BDS or further density matrix representation)
-            Question: is it general enough? Dephasing/damping channel, multipartite entanglement?
-        cutoff_ratio (float): ratio between cutoff time and memory coherence time (default 1, should be between 0 and 1).
-        generation_time (float): time when the EPR is first generated (float or int depends on timeing unit)
-            (default -1 before generation or not used). Used only for logging
-        last_update_time (float): last time when the EPR pair is updated (usually when decoherence channel applied),
-            used to determine decoherence channel (default -1 before generation or not used)
-        is_in_application (bool): whether the quantum memory is involved in application after successful distribution of EPR pair
-    """
-
-    def __init__(self, name: str, timeline: "Timeline", fidelity: float, frequency: float,
-                 efficiency: float, coherence_time: float, wavelength: int, decoherence_errors: List[float] = None, cutoff_ratio: float = 1):
-        """Constructor for the Memory class.
-
-        Args:
-            name (str): name of the memory instance.
-            timeline (Timeline): simulation timeline.
-            fidelity (float): initial fidelity of memory.
-            frequency (float): maximum frequency of excitation for memory.
-            efficiency (float): efficiency of memories.
-            coherence_time (float): average time (in s) that memory state is valid.
-            decoherence_rate (float): rate of decoherence to implement time dependent decoherence.
-            wavelength (int): wavelength (in nm) of photons emitted by memories.
-            decoherence_errors (List[float]): assuming the memory (qubit) decoherence channel being Pauli channel,
-                probability distribution of X, Y, Z Pauli errors
-                (default value is None, meaning not using BDS or further density matrix representation)
-            cutoff_ratio (float): the ratio between cutoff time and memory coherence time (default 1, should be between 0 and 1).
-        """
-
-        super().__init__(name, timeline)
-        assert 0 <= fidelity <= 1
-        assert 0 <= efficiency <= 1
-
-        self.fidelity = 0
-        self.raw_fidelity = fidelity
-        self.frequency = frequency
-        self.efficiency = efficiency
-        self.coherence_time = coherence_time  # coherence time in seconds
-        self.decoherence_rate = 1 / self.coherence_time if self.coherence_time > 0 else 0 # rate of decoherence to implement time dependent decoherence
-        self.wavelength = wavelength
-        self.qstate_key = timeline.quantum_manager.new()
-        self.memory_array = None
-
-        self.decoherence_errors = decoherence_errors
-        if self.decoherence_errors is not None:
-                assert len(self.decoherence_errors) == 3 and abs(sum(self.decoherence_errors) - 1) < EPSILON, \
-                "Decoherence errors refer to probabilities for each Pauli error to happen if an error happens, thus should be normalized."
-        self.cutoff_ratio = cutoff_ratio
-        assert 0 < self.cutoff_ratio <= 1, "Ratio of cutoff time and coherence time should be between 0 and 1"
-        self.generation_time = -1
-        self.last_update_time = -1
-        self.is_in_application = False
-
-        # for photons
-        self.encoding = copy(single_atom)
-        self.encoding["raw_fidelity"] = self.raw_fidelity
-
-        # for photons in general single-heralded EG protocols
-        self.encoding_sh = copy(single_heralded)
-
-        # for photons with encoding type of time_bin
-        self.encoding_tb = copy(time_bin)
-
-        # for photons with yb time_bin encoding
-        self.encoding_yb = copy(yb_time_bin)
-
-        # keep track of previous BSM result (for entanglement generation)
-        # -1 = no result, 0/1 give detector number
-        self.previous_bsm = -1
-
-        # keep track of entanglement
-        self.entangled_memory = {'node_id': None, 'memo_id': None}
-
-        # keep track of current memory write (ignore expiration of past states)
-        self.expiration_event = None
-        self.excited_photon = None
-
-        self.next_excite_time = 0
-
-    def init(self):
-        pass
-
-    def set_memory_array(self, memory_array: MemoryArray):
-        self.memory_array = memory_array
-
-    def excite(self, encoding_type, dst="", protocol="bk") -> None:
-        """Method to excite memory and potentially emit a photon.
-
-        If it is possible to emit a photon, the photon may be marked as null based on the state of the memory.
-
-        Args:
-            dst (str): name of destination node for emitted photon (default "").
-            protocol (str): Valid values are "bk" (for Barrett-Kok protocol) or "sh" (for single heralded)
-
-        Side Effects:
-            May modify quantum state of memory.
-            May schedule photon transmission to destination node.
-        """
-
-        # if can't excite yet, do nothing
-        if self.timeline.now() < self.next_excite_time:
-            return
-
-        # create photon
-        if encoding_type == "time_bin":
-            photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding_tb, 
-            quantum_state=self.qstate_key, use_qm=True)
-            # keep track of memory initialization time
-            self.generation_time = self.timeline.now()
-            self.last_update_time = self.timeline.now()
-            self.encoding = self.encoing_tb
-        if encoding_type == "yb_time_bin":
-            photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding_yb, 
-            quantum_state=self.qstate_key, use_qm=True)
-            # keep track of memory initialization time
-            self.generation_time = self.timeline.now()
-            self.last_update_time = self.timeline.now()
-            self.encoding = self.encoding_yb
-        elif protocol == "bk":
-            photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding,
-                            quantum_state=self.qstate_key, use_qm=True)
-        elif protocol == "sh":
-            photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding_sh, 
-                            quantum_state=self.qstate_key, use_qm=True)
-            # keep track of initialization time
-            self.generation_time = self.timeline.now()
-            self.last_update_time = self.timeline.now()
-        else:
-            raise ValueError("Invalid protocol type {} specified for memory.exite()".format(protocol))
-
-        photon.timeline = None  # facilitate cross-process exchange of photons
-        photon.is_null = True
-        photon.add_loss(1 - self.efficiency)
-
-        if self.frequency > 0:
-            period = 1e12 / self.frequency
-            self.next_excite_time = self.timeline.now() + period
-
-        # emission = Process(self._receivers[0], 'get', [photon], {'dst': dst})
-        # em_time = self.timeline.now() + self.encoding['em_delay']
-        # em_event = Event(em_time, emission)
-        # self.timeline.schedule(em_event)
-
-        # send to receiver
-        self._receivers[0].get(photon, dst=dst)
-        self.excited_photon = photon
-
-    def expire(self) -> None:
-        """Method to handle memory expiration.
-
-        Is scheduled automatically by the `set_plus` memory operation.
-
-        If the quantum memory has been explicitly involved in application after entanglement distribution, do not expire.
-            Some simplified applications do not necessarily need to modify the is_in_application attribute.
-            Some more complicated applications, such as probe state preparation for distributed quantum sensing,
-            may change is_in_application attribute to keep memory from expiring during study.
-        
-        Side Effects:
-            Will notify upper entities of expiration via the `pop` interface.
-            Will modify the quantum state of the memory.
-        """
-
-        if self.is_in_application:
-            pass
-
-        else:
-            if self.excited_photon:
-                self.excited_photon.is_null = True
-
-            self.reset()
-            # pop expiration message
-            self.notify(self)
-
-    def reset(self) -> None:
-        """Method to clear quantum memory.
-
-        Will reset quantum state to |0> and will clear entanglement information.
-
-        Side Effects:
-            Will modify internal parameters and quantum state.
-        """
-
-        self.fidelity = 0
-        self.generation_time = -1
-        self.last_update_time = -1
-
-        self.timeline.quantum_manager.set([self.qstate_key], [complex(1), complex(0)])
-        self.entangled_memory = {'node_id': None, 'memo_id': None}
-        if self.expiration_event is not None:
-            self.timeline.remove_event(self.expiration_event)
-            self.expiration_event = None
-
-    def update_state(self, state: List[complex]) -> None:
-        """Method to set the memory state to an arbitrary pure state.
-
-        Args:
-            state (List[complex]): array of amplitudes for pure state in Z-basis.
-
-        Side Effects:
-            Will modify internal quantum state and parameters.
-            May schedule expiration event.
-        """
-
-        self.timeline.quantum_manager.set([self.qstate_key], state)
-        self.previous_bsm = -1
-        self.entangled_memory = {'node_id': None, 'memo_id': None}
-
-        # schedule expiration
-        if self.coherence_time > 0:
-            self._schedule_expiration()
-
-    def bds_decohere(self) -> None:
-        """Method to decohere stored BDS in quantum memory according to the single-qubit Pauli channels.
-
-        During entanglement distribution (before application phase),
-        BDS decoherence can be treated analytically (see entanglement purification paper for explicit formulae).
-
-        Side Effects:
-            Will modify BDS diagonal elements and last_update_time.
-        """
-
-        if self.decoherence_errors is None:
-            # if not considering time-dependent decoherence then do nothing
-            pass
-
-        else:
-            time = (self.timeline.now() - self.last_update_time) * 1e-12  # duration of memory idling (in s)
-            if time > 0 and self.last_update_time > 0:  # time > 0 means time has progressed, self.last_update_time > 0 means the memory has not been reset
-
-                x_rate, y_rate, z_rate = self.decoherence_rate * self.decoherence_errors[0], \
-                                        self.decoherence_rate * self.decoherence_errors[1], \
-                                        self.decoherence_rate * self.decoherence_errors[2]
-                p_I, p_X, p_Y, p_Z = _p_id(x_rate, y_rate, z_rate, time), \
-                                    _p_xerr(x_rate, y_rate, z_rate, time), \
-                                    _p_yerr(x_rate, y_rate, z_rate, time), \
-                                    _p_zerr(x_rate, y_rate, z_rate, time)
-
-                state_now = self.timeline.quantum_manager.states[self.qstate_key].state  # current diagonal elements
-                transform_mtx = array([[p_I, p_Z, p_X, p_Y],
-                                       [p_Z, p_I, p_Y, p_X],
-                                       [p_X, p_Y, p_I, p_Z],
-                                       [p_Y, p_X, p_Z, p_I]])  # transform matrix for diagonal elements
-                state_new = transform_mtx @ state_now  # new diagonal elements after decoherence transformation
-            
-                log.logger.debug(f'{self.name}: before f={state_now[0]:.6f}, after f={state_new[0]:.6f}')
-                
-                # update the quantum state stored in quantum manager for self and entangled memory
-                keys = self.timeline.quantum_manager.states[self.qstate_key].keys
-                self.timeline.quantum_manager.set(keys, state_new)
-
-                # update the last_update_time of self
-                # note that the attr of entangled memory should not be updated right now,
-                # because decoherence has not been applied there
-                self.last_update_time = self.timeline.now()
-
-    def _schedule_expiration(self) -> None:
-        if self.expiration_event is not None:
-            self.timeline.remove_event(self.expiration_event)
-
-        decay_time = self.timeline.now() + int(self.cutoff_ratio * self.coherence_time * 1e12)
-        process = Process(self, "expire", [])
-        event = Event(decay_time, process)
-        self.timeline.schedule(event)
-
-        self.expiration_event = event
-
-    def update_expire_time(self, time: int):
-        """Method to change time of expiration.
-
-        Should not normally be called by protocols.
-
-        Args:
-            time (int): new expiration time.
-        """
-
-        time = max(time, self.timeline.now())
-        if self.expiration_event is None:
-            if time >= self.timeline.now():
-                process = Process(self, "expire", [])
-                event = Event(time, process)
-                self.timeline.schedule(event)
-        else:
-            self.timeline.update_event_time(self.expiration_event, time)
-
-    def get_expire_time(self) -> int:
-        return self.expiration_event.time if self.expiration_event else inf
-
-    def notify(self, msg: Dict[str, Any]):
-        for observer in self._observers:
-            observer.memory_expire(self)
-
-    def detach(self, observer: 'EntanglementProtocol'):  # observer could be a MemoryArray
-        if observer in self._observers:
-            self._observers.remove(observer)
-
-    def get_bds_state(self):
-        """Method to get state of memory in BDS formalism.
-
-        Will automatically call the `bds_decohere` method.
-        """
-        self.bds_decohere()
-        state_obj = self.timeline.quantum_manager.get(self.qstate_key)
-        state = state_obj.state
-        return state
-
-    def get_bds_fidelity(self) -> float:
-        """Will get the fidelity from the BDS state
-
-        Return:
-            (float): the fidelity of the BDS state
-        """
-        state_obj = self.timeline.quantum_manager.get(self.qstate_key)
-        state = state_obj.state
-        return state[0]
 
 
 class Yb1389States(Enum):
@@ -519,6 +186,8 @@ class Yb556States(Enum):
 
 class Yb(Memory):
 
+    _plus_state = [sqrt(1/2), sqrt(1/2)]
+
     def __init__(self, name: str, timeline: "Timeline", fidelity: float, frequency: float,
                  efficiency: float, coherence_time: float, wavelength: int, decoherence_errors: List[float] = None, cutoff_ratio: float = 1):
         
@@ -527,40 +196,24 @@ class Yb(Memory):
         self.original_memory_efficiency = self.efficiency
 
         self.retrap_time = 500_000_000_000
-        self.atom_lifetime = 40_000_000_000_000
-        self.lifetime_reload_time = 40_000_000_000_000
-        
-        if wavelength == 1389:
-            self.initialize_time = 51_400_000
-            self.cool_time = 1_400_000_000
-            self.clock_pulse_time = 5_000_000
-            self.raman_half_pi_pulse_time = 300_000
-            self.state_prep_time = self.clock_pulse_time + self.raman_half_pi_pulse_time
-            self.excite_pulse_time = 16_000
-            self.phase_flip_time = 700_000
-            self.bin_gap = 2_100_000 # this is 2.8 microseconds separation minus 0.7microseconds raman pi pulse
-            self.atom_state = Yb1389States.P0
-            self.retrap_num = 128
-            self.readout_time = 37_510_000_000
-            self.qchannel_time_correction = 9_000 # this is to make bin_separation divisible by qchannel frequency
-            self.state_lifetime = 330_000 # THIS IS IMPORTANT: HOW LONG 3D1 decay on average lasts, thus with the excite pulse time is the bin width
-        elif wavelength == 556:
-            self.initialize_time = 20_000_000
-            self.cool_time = 1_400_000_000
-            self.raman_half_pi_pulse_time = 850_000
-            self.state_prep_time = self.raman_half_pi_pulse_time
-            self.excite_pulse_time = 20_000
-            self.phase_flip_time = 1_800_000
-            self.bin_gap = 5_300_000 # this is 6 microseconds separation minus 0.7 microseconds raman pi pulse
-            self.atom_state = Yb556States.S0
-            self.readout_time = 30_000_000_000
-            self.qchannel_time_correction = TBD # this is to make bin_separation divisible by qchannel frequency
-            self.state_lifetime = 870_000 # THIS IS IMPORTANT: HOW LONG 3P1? decay on average lasts, thus with excite pulse time is the bin width
-        else:
-            raise ValueError('Wavelength ' + str(wavelength) + ' is not supported for ' + self.name + '.')
-        
-        self.bin_width = self.excite_pulse_time + self.state_lifetime # width of our bin, sum of time for excite pulse and time for decay
-        self.bin_separation = self.excite_pulse_time + self.bin_gap + self.phase_flip_time + self.qchannel_time_correction
+
+        self.initialize_time = None
+        self.cool_time = None
+        self.clock_pulse_time = None
+        self.raman_half_pi_pulse_time = None
+        self.state_prep_time = None
+        self.excite_pulse_time = None
+        self.phase_flip_time = None
+        self.bin_gap = None
+        self.atom_state = None
+        self.retrap_num = None
+        self.readout_time = None
+        self.state_lifetime = None
+        self.atom_lifetime = None
+        self.lifetime_reload_time = None
+        self.bin_width = None # detection window
+
+        self.bin_separation = None
 
 
 
@@ -578,14 +231,11 @@ class Yb(Memory):
         # create photon
         if encoding_type == "time_bin":
             yb_encoding = {'name': 'yb_time_bin', 'bin_separation': self.bin_separation, 'raw_fidelity': 1.0}
-            # photon_key = self.timeline.quantum_manager.new()
             photon = Photon("", self.timeline, wavelength=wavelength, location=self.name, encoding_type=yb_encoding, 
             quantum_state=self.qstate_key, use_qm=True) #TODO ADD A WAY TO POINT TOWARDS THE ACTUAL FOUR_VECTOR ENTANGLED STATE (FOR ATOM AND PHOTON)
-            # self.timeline.quantum_manager.set([photon_key], EGTB._plus_state)
             # keep track of memory initialization time
             self.generation_time = self.timeline.now()
             self.last_update_time = self.timeline.now()
-            # self.encoding = self.encoding_tb
         else:
             raise ValueError("Invalid encoding type {} specified for memory.exite()".format(encoding_type))
 
@@ -600,39 +250,18 @@ class Yb(Memory):
             self.next_excite_time = self.timeline.now() + period
 
         photon.add_loss(1 - self.efficiency)
+
+        # need to add loss for size of time-bin (atom may not have had time to decay)
+        late_decay_prob = e**(-self.bin_width/self.state_lifetime) # probability photon not released after self.bin_width
+        if self.get_generator().random() < late_decay_prob: # photon not released inside detector window
+            photon.loss = 1.0
+
         self._receivers[0].get(photon, dst=dst)
         self.excited_photon = photon
 
-        # NO LONGER CHECKING FOR LOSS HERE
-        # if self.get_generator().random() < self.efficiency:
-        #     photon.loss = 0
-        #     self._receivers[0].get(photon, dst=dst)
-        #     self.excited_photon = photon
-
-        #     '''  ################# OLD METHOD, NOT USING
-        #     key = photon.quantum_state
-        #     meas = qm.run_circuit(_photon_meas_circuit, [key], self.get_generator().random())[key]
-        #     # _set_state_with_fidelity([self.qstate_key, key], _psi_plus, photon.encoding_type["raw_fidelity"],
-        #     #                                    self.get_generator(), qm)
-        #     if meas == 0: # early photon
-        #         log.logger.info(f'Photon emmited from {self.name} in early time bin.')
-        #         # send to receiver
-        #         self._receivers[0].get(photon, dst=dst)
-        #         self.excited_photon = photon
-        #     elif meas == 1:
-        #         log.logger.info(f'Photon emmited from {self.name} in late time bin.')
-        #         process = Process(self._receivers[0], "get", [photon], {'dst': dst}) #, [photon, dst=dst])
-        #         event = Event(self.timeline.now() + self.bin_separation, process)
-        #         self.timeline.schedule(event)
-        #         self.excited_photon = photon
-        #     else:
-        #         raise ValueError('Measurement should only be 0 (early) or 1 (late).')
-        #     '''
-        # else:
-        #     log.logger.debug(f'{photon.name} lost in memory.')
     
     def initialize_cool_prep(self) -> int:
-        if (self.owner.attempts == 1) or self.owner.need_to_retrap or ((self.owner.attempts % 128) == 1 and self.wavelength == 1389):
+        if self.owner.need_to_retrap:
             self.owner.need_to_retrap = False
             added_delay = self.retrap_time
             if self.wavelength == 1389:
@@ -655,8 +284,8 @@ class Yb(Memory):
                 if self.wavelength == 1389:
                     self.atom_state = Yb1389States.P0
         if self.efficiency != 0:
-            self.update_state(EGTB._plus_state)
-        log.logger.info('Atom ' + str(self.name) + ' succesfully prepared in |+>.')
+            self.update_state(self._plus_state)
+            log.logger.info('Atom ' + str(self.name) + ' succesfully prepared in |+>.')
 
         total_time = self.initialize_time + self.cool_time + self.state_prep_time + added_delay
         return total_time
@@ -703,10 +332,12 @@ class Yb(Memory):
         qm = self.timeline.quantum_manager
 
         for k in keys:
-            if len(qm.states[k].state) != 4:
+            # print(str(qm.states[k].state))
+            if len(qm.states[k].state) != 4: # if not entangled
                 log.logger.warning('dark count state')
                 # qm.set([k], [1, 0])
 
+        
         if self.owner.basis == "X":
             qm.run_circuit(_H_circuit, keys).keys()
 
@@ -725,9 +356,10 @@ class Yb(Memory):
         else:
             result = 1
 
+        # print(result, self.owner.basis)
         return result, self.owner.basis
     
-    def change_wavelength(self, wavelength: int):
+    def set_wavelength(self, wavelength: int):
         if wavelength == 1389:
             self.initialize_time = 51_400_000
             self.cool_time = 1_400_000_000
@@ -740,8 +372,11 @@ class Yb(Memory):
             self.atom_state = Yb1389States.P0
             self.retrap_num = 128
             self.readout_time = 37_510_000_000
-            self.qchannel_time_correction = 9_000 # this is to make bin_separation divisible by qchannel frequency
+            # self.qchannel_time_correction = 9_000 # this is to make bin_separation divisible by qchannel frequency
             self.state_lifetime = 330_000 # THIS IS IMPORTANT: HOW LONG 3D1 decay on average lasts, thus with the excite pulse time is the bin width
+            self.atom_lifetime = 10_000_000_000_000 # from Covey Paper TODO check with Michael
+            self.lifetime_reload_time = 10_000_000_000_000
+            self.bin_width = 520_000 # this is the size of the detection window
         elif wavelength == 556:
             self.initialize_time = 20_000_000
             self.cool_time = 1_400_000_000
@@ -749,37 +384,29 @@ class Yb(Memory):
             self.state_prep_time = self.raman_half_pi_pulse_time
             self.excite_pulse_time = 20_000
             self.phase_flip_time = 1_800_000
-            self.bin_gap = 5_300_000 # this is 6 microseconds separation minus 0.7 microseconds raman pi pulse
+            self.bin_gap = 4_200_000 # this is 6 microseconds separation minus 1.8 microseconds raman pi pulse
             self.atom_state = Yb556States.S0
             self.readout_time = 30_000_000_000
-            self.qchannel_time_correction = TBD # this is to make bin_separation divisible by qchannel frequency
             self.state_lifetime = 870_000 # THIS IS IMPORTANT: HOW LONG 3P1? decay on average lasts, thus with excite pulse time is the bin width
+            self.atom_lifetime = 40_000_000_000_000
+            self.lifetime_reload_time = 40_000_000_000_000
+            self.bin_width = 1_400_000 # TODO check if this matches P of still being in excited stated in 1389 case given 556 lifetime
         else:
             raise ValueError('Wavelength ' + str(wavelength) + ' is not supported for ' + self.name + '.')
         
-        self.bin_width = self.excite_pulse_time + self.state_lifetime # width of our bin, sum of time for excite pulse and time for decay
-        self.bin_separation = self.excite_pulse_time + self.bin_gap + self.phase_flip_time + self.qchannel_time_correction
-        
+        self.bin_separation = self.bin_gap + self.phase_flip_time + self.excite_pulse_time
         self.wavelength = wavelength
-
-    def schedule_atom_loss(self):
-        assert self.atom_lifetime > 0, "Memory.schedule_atom_loss() called with 0 atom lifetime."
-        time_to_next = int(self.get_generator().exponential(self.atom_lifetime) * 1e12)
-        time = time_to_next + self.timeline.now()
-        process1 = Process(self, "lose_atom", [])
-        process2 = Process(self, "schedule_atom_loss", [])
-        event1 = Event(time, process1)
-        event2 = Event(time, process2)
-        self.timeline.schedule(event1)
-        self.timeline.schedule(event2)
 
     def lose_atom(self):
         self.efficiency = 0
         if self.wavelength == 1389:
-            self.atom_state = Yb1389States.LOST
+            if self.atom_state != Yb1389States.LOST:
+                log.logger.warning(f'{self.name} atom lost through lifetime expiration!')
+                self.atom_state = Yb1389States.LOST
         elif self.wavelength == 556:
-            log.logger.warning('Atom lost through lifetime expiration!')
-            self.atom_state = Yb556States.LOST
+            if self.atom_state != Yb556States.LOST:
+                log.logger.warning(f'{self.name} atom lost through lifetime expiration!')
+                self.atom_state = Yb556States.LOST
 
 
     

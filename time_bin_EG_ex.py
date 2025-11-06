@@ -12,7 +12,7 @@ Yb computer will emmit photons we will view as time_bin encoded.
 
 '''
 from sequence.kernel.timeline import Timeline
-from custom_node import Node, BSMNode
+from nodes import Node, BSMNode
 from memory import Memory
 from sequence.components.optical_channel import QuantumChannel, ClassicalChannel
 from generation import EntanglementGenerationTimeBin

@@ -1,75 +1,68 @@
 '''
 This file is to try and do realistic simulation of entanglement generation
 between two single-atom yb nodes. We will be using what we believe are realistic
-parameters and mapping average time and attempts required to get entanglement.
+parameters and mapping average time and attempts required to get entanglement as
+well as entanglement fidelity.
 
 NOTE: ADD MORE INFO HERE
 
 '''
 
-
-from sequence.kernel.timeline import Timeline
-from custom_node import Node, BSMNode
-from memory import Memory
-from sequence.components.optical_channel import ClassicalChannel
-from qchannels import QuantumChannel
-from generation import EntanglementGenerationTimeBinYb
-from sequence.message import Message
 from sequence.utils import log
-import plotly.graph_objects as go
 from encoding import yb_time_bin
 from copy import copy
-from yb_router_net_topo import RouterNetTopo
-from request_app import RequestApp
+from yb_router_net_topo import YbRouterNetTopo
+from sequence.app.request_app import RequestApp
 from math import inf
 import argparse
-import time
 from memory import MemoryArray
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-pce', '--photoncollectionefficiency', type=float, default=0.1, help='efficiency of photon collection into fiber')
+    parser.add_argument('-pce', '--photoncollectionefficiency', type=float, default=0.5, help='efficiency of photon collection into fiber')
     parser.add_argument('-wavelength', '--photonwavelength', type=int, default=1389, help='wavelength of emmitted photons')
-    parser.add_argument('-t_retrap', '--time_to_retrap', type=int, default=40, help="Time atom has been in trap at which we want to retrap (in seconds).")
+    # parser.add_argument('-t_retrap', '--time_to_retrap', type=int, default=40, help="Time atom has been in trap at which we want to retrap (in seconds).") 
     parser.add_argument('-n', '--numtrials', type=int, default=200, help="number of entangled pairs we generated")
-    parser.add_argument('-dtctor_dc', '--detectordarkcount', type=float, default=11.0, help="Dark count rate, in Hz, for the detector in the BSM.")
-    parser.add_argument('-dtctor_eff', '--detectorefficiency', type=float, default=1.0, help="Efficiency for the detector in the BSM.")
+    parser.add_argument('-dtctor_dc', '--detectordarkcount', type=float, default=0.0, help="Dark count rate, in Hz, for the detector in the BSM.")
+    parser.add_argument('-dtctor_eff', '--detectorefficiency', type=float, default=0.85, help="Efficiency for the detector in the BSM.") # default should be 0.85 according to Joaquin
+    parser.add_argument('-dtctor_res', '--detectorresolution', type=int, default=50_000, help='Minimum time difference our SNSPDs can resolve.')
     parser.add_argument('-bsm_wvln', '--bsm_operating_wavelength', type=int, default=746, help="Photon wavelength BSM ideally operates at.")
     parser.add_argument('-qfc_eff', '--qfc_efficiency', type=float, default=0.5, help="Efficiency of our quantum frequency converters.")
-    parser.add_argument('-qfc_noise', '--qfc_noise', type=float, default=0.2, help="Noise, in number of noise photons per signal photon, in our QFC.")
+    parser.add_argument('-qfc_noise', '--qfc_noise', type=float, default=0.0, help="Noise, in number of noise photons per signal photon, in our QFC.")
 
-
+    # take all of our args and make variables of them
     args = parser.parse_args()
     photon_collection_efficiency = args.photoncollectionefficiency
     wavelength = args.photonwavelength
-    retrap_time = args.time_to_retrap * 1e12
+    # lifetime_reload_time= args.time_to_retrap * 1e12
     n = args.numtrials
     detector_dark_count = args.detectordarkcount
     detector_efficiency = args.detectorefficiency
+    detector_time_resolution = args.detectorresolution
     bsm_operating_wavelength = args.bsm_operating_wavelength
     qfc_eff = args.qfc_efficiency
     qfc_noise = args.qfc_noise
 
-
-    # NOTE: I don't think I need encodings anymore?
-    # yb_enc = copy(yb_time_bin)
-
+    # network topology json reference and build
     network_config = 'linear.json'
-    network_topo = RouterNetTopo(network_config)
+    network_topo = YbRouterNetTopo(network_config)
 
     tl = network_topo.get_timeline()
-    encoding_name = 'TimeBinBSM'
+    bsm_hardware_name = 'HetTimeBinBSM' # NOTE Is there a better way to do this?
 
-    # use encoding_name to grab encoding-appropriate BSM object
-    bsm = network_topo.get_nodes_by_type(RouterNetTopo.BSM_NODE)[0].get_components_by_type(encoding_name)[0]
-    bsm.update_detectors_params('efficiency', detector_efficiency) # according to Joaquin should be .85
+    # use harware name to grab encoding-appropriate BSM object
+    bsm = network_topo.get_nodes_by_type(YbRouterNetTopo.BSM_NODE)[0].get_components_by_type(bsm_hardware_name)[0]
+    
+    # set detector params
+    bsm.update_detectors_params('efficiency', detector_efficiency)
     bsm.update_detectors_params('dark_count', detector_dark_count)
+    bsm.update_detectors_params('resolution', detector_time_resolution)
 
 
-    # logging added here
+    #### logging added here ####
     # log_filename = f'pce={photon_collection_efficiency},lambda={wavelength},num_trials={n}.log'
-    # log_filename = f'data/fid(qfc_dc)/qfc_dc={qfc_dc}.log'
-    log_filename = 'crap.log'
+    # log_filename = f'data/fid(qfc_noise)/qfc_noise={qfc_noise}.log'
+    log_filename = 'checking.log'
     log.set_logger(__name__, tl, log_filename)
     log.set_logger_level('WARNING')
     log.track_module('generation')
@@ -81,49 +74,53 @@ def main():
     log.track_module('time_bin_bsm')
     log.track_module('optical_channel')
     log.track_module('main_yb_yb_EG_sim')
+    #############################
 
-    total_time = 0
+    total_time = 0 # variable to track total simulation time to get n entanglement paris
 
-    node0 = network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)[0]
-    node1 = network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)[1]
-
+    # setting node params
+    node0 = network_topo.get_nodes_by_type(YbRouterNetTopo.QUANTUM_ROUTER)[0]
+    node1 = network_topo.get_nodes_by_type(YbRouterNetTopo.QUANTUM_ROUTER)[1]
     node0.meas_fid = 0.99
     node1.meas_fid = 0.99
 
+    # creating request app
     app0,_ = RequestApp(node0),RequestApp(node1)
 
-    # TODO remeber why there is the + 1_000_000
-    start_time = network_topo.get_cchannels()[4].delay + network_topo.get_cchannels()[5].delay + 1_000_000
+    # TODO do RequestApp's need start time?
+    start_time = network_topo.get_cchannels()[4].delay + network_topo.get_cchannels()[5].delay
 
-    mem0 = node0.get_components_by_type(MemoryArray)[0].memories[0]
+    # grab memories
+    mem0 = node0.get_components_by_type(MemoryArray)[0].memories[0] # TODO FIGURE OUT WHY THIS DIDN"T WORK
     mem1 = node1.get_components_by_type(MemoryArray)[0].memories[0]
     
+    # set memory parameters
     mem0.efficiency = photon_collection_efficiency
     mem1.efficiency = photon_collection_efficiency
     mem0.original_memory_efficiency = photon_collection_efficiency
     mem1.original_memory_efficiency = photon_collection_efficiency
-    mem0.change_wavelength(wavelength)
-    mem1.change_wavelength(wavelength)
-    mem0.time_to_retrap = retrap_time
-    mem0.time_to_retrap = retrap_time
+    mem0.set_wavelength(wavelength)
+    mem1.set_wavelength(wavelength)
+    # mem0.lifetime_reload_time = lifetime_reload_time
+    # mem1.lifetime_reload_time = lifetime_reload_time
 
-    if mem0.bin_width == mem1.bin_width:
-        bsm.average_bin_size = mem0.bin_width
+    if mem0.bin_width == mem1.bin_width: # Yb nodes must have same bin width
+        bsm.bin_width = mem0.bin_width # BSM object needs bin width to know the valid range of trigger times (tolerance)
     else:
         raise ValueError(f'Memory must operate with same bin size, yet mem0={mem0.bin_width} and mem1 = {mem1.bin_width}')
     
-    if mem0.bin_separation == mem1.bin_separation:
-        bsm.time_bin_separation = mem0.bin_separation
+    if mem0.bin_separation == mem1.bin_separation: # Yb nodes must have same bin separation
+        bsm.time_bin_separation = mem0.bin_separation # BSM objects need to know bin separation to understand valid temporal click distances
     else:
         raise ValueError(f'Memory must operate with same bin separation, yet mem0={mem0.bin_separation} and mem1 = {mem1.bin_separation}')
 
+    # initiate QFC params
     for i in range(2):
         qfc = network_topo.qfcs[i]
         qfc.input_wvln = wavelength
-        qfc.output_wvln = bsm_operating_wavelength
+        qfc.output_wvln = bsm_operating_wavelength # TODO make this come out of the json file
         qfc.efficiency = qfc_eff
         qfc.noise = qfc_noise
-        qfc.bin_separation = mem0.bin_separation
 
     for i in range(n):
         if i == 0:
@@ -137,8 +134,8 @@ def main():
             node1.basis = "X"
         beginning = tl.now()
         starting_attempts = node0.attempts
-        node0.last_trap_time = beginning - node0.time_in_trap
-        node1.last_trap_time = beginning - node1.time_in_trap
+        node0.last_trap_time = beginning - node0.time_in_trap # sets last time of trapping to time_in_trap before current time
+        node1.last_trap_time = beginning - node1.time_in_trap # sets last time of trapping to time_in_trap before current time
         tl.init()
         app0.start("router_1", beginning + start_time, beginning + 1_000_000_000_000_000, 1, 1)
         log.logger.warning("Starting EG attempt at " + str(tl.time) + '.')
@@ -155,6 +152,7 @@ def main():
 
     fid = node1.get_fidelity(n)
 
+    # logging
     log.logger.warning(f'After {n} entanglement attempts, calculated fidelity is {fid}.')
     log.logger.warning(f'Average ent time is {total_time/n}.')
     log.logger.warning(f'{n} entanglement pairs were generated after {node0.attempts} attempts.')

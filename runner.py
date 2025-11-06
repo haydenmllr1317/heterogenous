@@ -80,8 +80,8 @@ command = ['python3', 'main_yb_yb_EG_sim.py']
 
 for i in range(50):
     args = []
-    args.append('-qfc_dc')
-    x = 5.0 + 20.0*i
+    args.append('-qfc_noise')
+    x = 0.01*(i+1)
     args.append(str(x))
     tasks.append(command+args)
 

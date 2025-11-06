@@ -1,15 +1,12 @@
 import json
-import numpy as np
-from networkx import Graph, dijkstra_path, exception
 
-from topology import Topology as Topo
-from sequence.kernel.timeline import Timeline
-from custom_node import Node, BSMNode, QuantumRouter
+from sequence.topology.router_net_topo import RouterNetTopo
+from nodes import HetBSMNode, HetQR
 from sequence.constants import SPEED_OF_LIGHT
-from sequence.kernel.quantum_manager import BELL_DIAGONAL_STATE_FORMALISM
-from QFC import QFC
+from qfc import QFC
+from qchannel import HetQuantumChannel
 
-class RouterNetTopo(Topo):
+class YbRouterNetTopo(RouterNetTopo):
     """Class for generating quantum communication network with quantum routers
 
     Class RouterNetTopo is the child of class Topology. Quantum routers, BSM
@@ -25,213 +22,75 @@ class RouterNetTopo(Topo):
         cchannels (List[ClassicalChannel]): list of classical channel objects in network.
         tl (Timeline): the timeline used for simulation
     """
-    ALL_GROUP = "groups"
-    ASYNC = "async"
-    BSM_NODE = "BSMNode"
-    GROUP = "group"
-    IP = "ip"
-    IS_PARALLEL = "is_parallel"
-    LOOKAHEAD = "lookahead"
-    MEET_IN_THE_MID = "meet_in_the_middle"
-    MEMO_ARRAY_SIZE = "memo_size"
+
     MEMO_ARRAY_TYPE = "memo_type"
-    PORT = "port"
-    PROC_NUM = "process_num"
-    QUANTUM_ROUTER = "QuantumRouter"
-    CONTROLLER = "Controller"
     ENCODING_TYPE = 'encoding_type'
     WAVELENGTH = 'wavelength'
     ALL_QFCS = 'qfcs'
+    CONVERTER = "converter"
 
     def __init__(self, conf_file_name: str):
-        self.bsm_to_router_map = {}
-        self.encoding_type = None
         self.qfcs = []
         super().__init__(conf_file_name)
         
 
     def _load(self, filename: str):
+        super()._load(filename)
         with open(filename, 'r') as fh:
             config = json.load(fh)
-
-        self._get_templates(config)
-        # quantum connections are only supported by sequential simulation so far
-        if not config[self.IS_PARALLEL]:
-            self._add_qconnections(config)
-        self._add_timeline(config)
-        self._map_bsm_routers(config)
-        self._add_nodes(config)
-        self._add_bsm_node_to_router()
         self._add_qfcs(config)
-        self._add_qchannels(config)
-        self._add_cchannels(config)
-        self._add_cconnections(config)
-        self._generate_forwarding_table(config)
 
-    def _add_timeline(self, config: dict):
-        stop_time = config.get(Topo.STOP_TIME, float('inf'))
-        if config.get(self.IS_PARALLEL, False):
-            raise Exception("Please install 'psequence' package for parallel simulations.")
-        else:
-            self.tl = Timeline(stop_time)
+    # just adding QFC to channels as converter
+    def _add_qchannels(self, config: dict) -> None:
+        for qc in config.get(self.ALL_Q_CHANNEL, []):
+            src_str, dst_str = qc[self.SRC], qc[self.DST]
+            src_node = self.tl.get_entity_by_name(src_str)
+            if src_node is not None:
+                name = qc.get(self.NAME, f"qc.{src_str}.{dst_str}")
+                distance = qc[self.DISTANCE]
+                attenuation = qc[self.ATTENUATION]
+                converter = qc[self.CONVERTER] # NOTE added this
+                qc_obj = HetQuantumChannel(name, self.tl, attenuation, distance, qfc=converter)
+                qc_obj.set_ends(src_node, dst_str)
+                self.qchannels.append(qc_obj)
 
+    # make QFC not a real desination in terms of router map
     def _map_bsm_routers(self, config):
-        for qc in config[Topo.ALL_Q_CHANNEL]:
-            src, dst = qc[Topo.SRC], qc[Topo.DST]
+        for qc in config[self.ALL_Q_CHANNEL]:
+            src, dst = qc[self.SRC], qc[self.DST]
             for qfc in config[self.ALL_QFCS]:
-                if dst == qfc[Topo.NAME]:
-                    dst = qfc[Topo.DST]
+                if dst == qfc[self.NAME]:
+                    dst = qfc[self.DST]
                     break
             if dst in self.bsm_to_router_map:
                 self.bsm_to_router_map[dst].append(src)
             else:
                 self.bsm_to_router_map[dst] = [src]
 
+    # creating HetBSMNode and HetQR
     def _add_nodes(self, config: dict):
-        for node in config[Topo.ALL_NODE]:
-            seed = node[Topo.SEED]
-            node_type = node[Topo.TYPE]
-            name = node[Topo.NAME]
-            template_name = node.get(Topo.TEMPLATE, None)
+        for node in config[self.ALL_NODE]:
+            seed = node[self.SEED]
+            node_type = node[self.TYPE]
+            name = node[self.NAME]
+            template_name = node.get(self.TEMPLATE, None)
             template = self.templates.get(template_name, {})
 
             if node_type == self.BSM_NODE:
                 others = self.bsm_to_router_map[name]
-                enc_type = node.get(self.ENCODING_TYPE, "single_atom")
-                node_obj = BSMNode(name, self.tl, others, enc_type)
+                node_obj = HetBSMNode(name, self.tl, others, component_templates=template)
             elif node_type == self.QUANTUM_ROUTER:
                 memo_size = node.get(self.MEMO_ARRAY_SIZE, 0)
-                memo_type = node.get(self.MEMO_ARRAY_TYPE, None)
-                wavelength = node[self.WAVELENGTH]
-                node_obj = QuantumRouter(name, self.tl, memo_size, memo_type, wavelength=wavelength)
+                node_obj = HetQR(name, self.tl, memo_size, component_templates=template)
             else:
                 raise ValueError("Unknown type of node '{}'".format(node_type))
 
             node_obj.set_seed(seed)
             self.nodes[node_type].append(node_obj)
-
-    def _add_bsm_node_to_router(self):
-        for bsm in self.bsm_to_router_map:
-            r0_str, r1_str = self.bsm_to_router_map[bsm]
-            r0 = self.tl.get_entity_by_name(r0_str)
-            r1 = self.tl.get_entity_by_name(r1_str)
-            if r0 is not None:
-                r0.add_bsm_node(bsm, r1_str)
-            if r1 is not None:
-                r1.add_bsm_node(bsm, r0_str)
-
-    def _add_qconnections(self, config: dict):
-        """generate bsm_info, qc_info, and cc_info for the q_connections."""
-        for q_connect in config.get(Topo.ALL_Q_CONNECT, []):
-            node1 = q_connect[Topo.CONNECT_NODE_1]
-            node2 = q_connect[Topo.CONNECT_NODE_2]
-            attenuation = q_connect[Topo.ATTENUATION]
-            distance = q_connect[Topo.DISTANCE] // 2
-            channel_type = q_connect[Topo.TYPE]
-            cc_delay = []                                   # generate classical channel delay
-            for cc in config.get(self.ALL_C_CHANNEL, []):   # classical channel
-                if cc[self.SRC] == node1 and cc[self.DST] == node2:
-                    delay = cc.get(self.DELAY, cc.get(self.DISTANCE, 1000) / SPEED_OF_LIGHT)
-                    cc_delay.append(delay)
-                elif cc[self.SRC] == node2 and cc[self.DST] == node1:
-                    delay = cc.get(self.DELAY, cc.get(self.DISTANCE, 1000) / SPEED_OF_LIGHT)
-                    cc_delay.append(delay)
-
-            for cc in config.get(self.ALL_C_CONNECT, []):  # classical connection
-                if (cc[self.CONNECT_NODE_1] == node1 and cc[self.CONNECT_NODE_2] == node2) \
-                        or (cc[self.CONNECT_NODE_1] == node2 and cc[self.CONNECT_NODE_2] == node1):
-                    delay = cc.get(self.DELAY, cc.get(self.DISTANCE, 1000) / SPEED_OF_LIGHT)
-                    cc_delay.append(delay)
-            if len(cc_delay) == 0:
-                assert 0, q_connect
-            cc_delay = np.mean(cc_delay) // 2
-
-            if channel_type == self.MEET_IN_THE_MID:
-                bsm_name = "BSM.{}.{}.auto".format(node1, node2)  # the intermediate BSM node
-                bsm_seed = q_connect.get(Topo.SEED, 0)
-                bsm_template_name = q_connect.get(Topo.TEMPLATE, None)
-                bsm_info = {self.NAME: bsm_name,
-                            self.TYPE: self.BSM_NODE,
-                            self.SEED: bsm_seed,
-                            self.TEMPLATE: bsm_template_name}
-                config[self.ALL_NODE].append(bsm_info)
-
-                for src in [node1, node2]:
-                    qc_name = "QC.{}.{}".format(src, bsm_name)  # the quantum channel
-                    qc_info = {self.NAME: qc_name,
-                               self.SRC: src,
-                               self.DST: bsm_name,
-                               self.DISTANCE: distance,
-                               self.ATTENUATION: attenuation}
-                    if self.ALL_Q_CHANNEL not in config:
-                        config[self.ALL_Q_CHANNEL] = []
-                    config[self.ALL_Q_CHANNEL].append(qc_info)
-
-                    cc_name = "CC.{}.{}".format(src, bsm_name)  # the classical channel
-                    cc_info = {self.NAME: cc_name,
-                               self.SRC: src,
-                               self.DST: bsm_name,
-                               self.DISTANCE: distance,
-                               self.DELAY: cc_delay}
-                    if self.ALL_C_CHANNEL not in config:
-                        config[self.ALL_C_CHANNEL] = []
-                    config[self.ALL_C_CHANNEL].append(cc_info)
-
-                    cc_name = "CC.{}.{}".format(bsm_name, src)
-                    cc_info = {self.NAME: cc_name,
-                               self.SRC: bsm_name,
-                               self.DST: src,
-                               self.DISTANCE: distance,
-                               self.DELAY: cc_delay}
-                    config[self.ALL_C_CHANNEL].append(cc_info)
-            else:
-                raise NotImplementedError("Unknown type of quantum connection")
-
-    def _generate_forwarding_table(self, config: dict):
-        """For static routing."""
-        graph = Graph()
-        for node in config[Topo.ALL_NODE]:
-            if node[Topo.TYPE] == self.QUANTUM_ROUTER:
-                graph.add_node(node[Topo.NAME])
-
-        costs = {}
-        if config[self.IS_PARALLEL]:
-            for qc in config[self.ALL_Q_CHANNEL]:
-                router, bsm = qc[self.SRC], qc[self.DST]
-                if bsm not in costs:
-                    costs[bsm] = [router, qc[self.DISTANCE]]
-                else:
-                    costs[bsm] = [router] + costs[bsm]
-                    costs[bsm][-1] += qc[self.DISTANCE]
-        else:
-            for qc in self.qchannels:
-                router, bsm = qc.sender.name, qc.receiver
-                if bsm not in costs:
-                    costs[bsm] = [router, qc.distance]
-                else:
-                    costs[bsm] = [router] + costs[bsm]
-                    costs[bsm][-1] += qc.distance
-
-        graph.add_weighted_edges_from(costs.values())
-        for src in self.nodes[self.QUANTUM_ROUTER]:
-            for dst_name in graph.nodes:
-                if src.name == dst_name:
-                    continue
-                try:
-                    if dst_name > src.name:
-                        path = dijkstra_path(graph, src.name, dst_name)
-                    else:
-                        path = dijkstra_path(graph, dst_name, src.name)[::-1]
-                    next_hop = path[1]
-                    # routing protocol locates at the bottom of the stack
-                    routing_protocol = src.network_manager.protocol_stack[0]  # guarantee that [0] is the routing protocol?
-                    routing_protocol.add_forwarding_rule(dst_name, next_hop)
-                except exception.NetworkXNoPath:
-                    pass
     
     def _add_qfcs(self, config: dict):
         for qfc in config[self.ALL_QFCS]:
-            name = qfc[Topo.NAME]
+            name = qfc[self.NAME]
             destination = qfc[self.DST]
             converter = QFC(name,self.tl,destination)
             converter.add_receiver(self.nodes[self.BSM_NODE][0])

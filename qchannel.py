@@ -11,16 +11,14 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from sequence.kernel.timeline import Timeline
-    from custom_node import Node
+    from nodes import Node
     from photon import Photon
-    from sequence.message import Message
 
-from sequence.kernel.entity import Entity
 from sequence.kernel.event import Event
 from sequence.kernel.process import Process
 from sequence.utils import log
 from sequence.constants import SPEED_OF_LIGHT, MICROSECOND, SECOND, EPSILON
-from sequence.components.optical_channel import OpticalChannel
+from sequence.components.optical_channel import QuantumChannel
 
 gmpy2.get_context().precision = 200
 EPSILON_MPFR = gmpy2.mpfr(EPSILON)
@@ -28,7 +26,7 @@ PS_PER_SECOND = gmpy2.mpz(SECOND)
 
 
 
-class QuantumChannel(OpticalChannel):
+class HetQuantumChannel(QuantumChannel):
     """Optical channel for transmission of photons/qubits.
 
     Attributes:
@@ -61,34 +59,10 @@ class QuantumChannel(OpticalChannel):
             frequency (float): maximum frequency of qubit transmission (in Hz) (default 8e7).
         """
 
-        super().__init__(name, timeline, attenuation, distance, polarization_fidelity, light_speed)
-        self.delay: int = -1
-        self.loss: float = 1
-        self.frequency: float = frequency  # maximum frequency for sending qubits (measured in Hz)
-        self.send_bins: list = []
-        self.qfc = qfc
+        super().__init__(name, timeline, attenuation, distance, polarization_fidelity, light_speed, frequency)
+        self.qfc = qfc # NOTE NEW
 
-    def init(self) -> None:
-        """Implementation of Entity interface (see base class)."""
-
-        self.delay = round(self.distance / self.light_speed)
-        self.loss = 1 - 10 ** (self.distance * self.attenuation / -10)
-
-    def set_ends(self, sender: "Node", receiver: str) -> None:
-        """Method to set endpoints for the quantum channel.
-
-        This must be performed before transmission.
-
-        Args:
-            sender (Node): node sending qubits.
-            receiver (str): name of node receiving qubits.
-        """
-
-        log.logger.info(f"Set {sender.name}, {receiver} as ends of quantum channel {self.name}")
-        self.sender = sender
-        self.receiver = receiver
-        sender.assign_qchannel(self, receiver)
-
+    # NOTE overwrote to ensure photon goes to QFC before node
     def transmit(self, qubit: "Photon", source: "Node") -> None:
         """Method to transmit photon-encoded qubits.
 
@@ -150,67 +124,3 @@ class QuantumChannel(OpticalChannel):
         # if not using Fock representation, if photon lost, exit
         else:
             pass
-
-    def time_to_timebin(self, time: int, frequency: float) -> int:
-        """Convert simulation time to time bin.
-           Use the gmpy2.mpfr for high precision floating points.
-           The precision is set to 200 bits, equivalent to around 54 significant decimal digits.
-           The float in Python is 64 bits,   equivalent to around 16 significant decimal digits.
-
-        Args:
-            time (int): simulation time (picoseconds) to convert.
-            frequency (float): frequency of the channel.
-        Returns:
-            int: time bin corresponding to the given simulation time.
-        """
-        time = gmpy2.mpfr(time)
-        frequency = gmpy2.mpfr(frequency)
-        time_bin = time * frequency / PS_PER_SECOND
-        if time_bin - gmpy2.floor(time_bin) > EPSILON_MPFR:
-            time_bin = int(time_bin) + 1       # round to the next time bin
-        else:
-            time_bin = int(time_bin)
-        return time_bin
-
-    def timebin_to_time(self, time_bin: int, frequency: float) -> int:
-        """Convert time bin to simulation time (picoseconds).
-           Use the gmpy2.mpz  for high precision integers.
-           Use the gmpy2.mpfr for high precision floating points.
-
-        Args:
-            time_bin (int): time bin to convert.
-            frequency (float): frequency of the channel.
-
-        Returns:
-            int: simulation time (picoseconds) corresponding to the given time bin.
-        """
-        time_bin = gmpy2.mpz(time_bin)
-        frequency = gmpy2.mpfr(frequency)
-        time = gmpy2.mpfr(time_bin * PS_PER_SECOND) / frequency
-        return int(time)
-
-    def schedule_transmit(self, min_time: int) -> int:
-        """Method to schedule a time for photon transmission.
-
-        Quantum Channels are limited by a frequency of transmission.
-        This method returns the next available time for transmitting a photon.
-        
-        Args:
-            min_time (int): minimum simulation time for transmission.
-
-        Returns:
-            int: simulation time for next available transmission window.
-        """
-        min_time = max(min_time, self.timeline.now())
-        time_bin = self.time_to_timebin(min_time, self.frequency)
-
-        # find earliest available time bin
-        while time_bin in self.send_bins:
-            time_bin += 1
-        hq.heappush(self.send_bins, time_bin)
-
-        time = self.timebin_to_time(time_bin, self.frequency)
-        return time
-
-    def _receiver_on_other_tl(self) -> bool:
-        return self.timeline.get_entity_by_name(self.receiver) is None

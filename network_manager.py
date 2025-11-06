@@ -8,31 +8,16 @@ from enum import Enum
 from typing import List, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from custom_node import QuantumRouter
+    from nodes import QuantumRouter
     from sequence.protocol import StackProtocol
 
 from sequence.message import Message
 from sequence.network_management.routing import StaticRoutingProtocol
 from reservation import ResourceReservationProtocol, ResourceReservationMessage, RSVPMsgType
 from sequence.utils import log
+from sequence.network_management.network_manager import NetworkManagerMessage
 
-
-class NetworkManagerMessage(Message):
-    """Message used by the network manager.
-
-    Attributes:
-        msg_type (Enum): message type required by base message type.
-        receiver (str): name of destination protocol instance.
-        payload (Message): message to be passed through destination network manager.
-    """
-
-    def __init__(self, msg_type: Enum, receiver: str, payload: "Message"):
-        super().__init__(msg_type, receiver)
-        self.payload = payload
-
-    def __str__(self) -> str:
-        return "type={}; receiver={}; payload={}".format(self.msg_type, self.receiver, self.payload)
-
+####### THIS FILE ISN'T ADDING ANYTHING NEW, IT'S JUST FOR POINTING TO THE RIGHT PLACES #######
 
 class NetworkManager:
     """Network manager implementation class.

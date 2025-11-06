@@ -132,7 +132,8 @@ class Detector(Entity):
         if now > self.next_detection_time:
             self.recorded_detection_count += 1
             time = round(now / self.time_resolution) * self.time_resolution
-            # print(str(time-now))
+            if not kwargs:
+                log.logger.info(f'Dark count from {self.name}.')
             info = {'time': time, **kwargs}
             self.notify(info)
             self.next_detection_time = now + (1e12 / self.count_rate)  # period in ps

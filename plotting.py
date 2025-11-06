@@ -2,6 +2,79 @@ import matplotlib.pyplot as plt
 import re
 import glob
 
+######################################### ORGANIZED PLOTS #########################################
+
+# FIDELITY(QFC_NOISE) PLOTS
+
+log_files_fid_vs_qfc_noise = glob.glob('data/fid(qfc_noise)/qfc_noise=*.log')
+
+fids = []
+qfc_noise = []
+
+i = 0
+
+for filename in log_files_fid_vs_qfc_noise:
+    noise = None
+    fid = None
+    noise_match = re.search(r"qfc_noise=([\d.]+)", filename)
+    if noise_match:
+        noise = noise_match.group(1)
+    else:
+        raise ValueError('File had no qfc_noise')
+    
+    i += 1
+    # print(i)
+
+    with open(filename, 'r') as f:
+        for line in f:
+
+            # sim_match = re.search(r"Average ent time is (\d+\.\d+)", line)
+            # if sim_match:
+            #     sim_mem_eff556.append(mem_eff)
+            #     sim_times556.append(float(sim_match.group(1)))
+            fid_match = re.search(r"calculated fidelity is ([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)", line)
+            if fid_match:
+                qfc_noise.append(noise)
+                fids.append(float(fid_match.group(1)))
+                print(filename)
+            # attempts_match = re.search(r"were generated after (\d+) attempts.", line)
+            # if attempts_match:
+            #     attempts_mem_eff556.append(mem_eff)
+            #     ent_attempts556.append(float(attempts_match.group(1))/num_trials)
+            
+
+print(len(qfc_noise))
+print(len(fids))
+
+fids_vs_qfc_sorted_pairs = sorted(zip(qfc_noise, fids))
+x_sorted, y_sorted = zip(*fids_vs_qfc_sorted_pairs)
+
+noise_sorted = list(x_sorted)[:20]
+fids_sorted = list(y_sorted)[:20]
+
+
+plt.figure()
+plt.plot(noise_sorted, fids_sorted, marker='o')
+plt.xticks(noise_sorted[::5])
+# plt.plot(sim_mem_eff_sorted556, sim_times_sorted556, marker='o', label='556')
+# plt.plot(sim_expected_x, sim_expected_y, marker='o', label='Expected')
+plt.legend()
+# plt.yscale('log')
+plt.xlabel("QFC Noise Rate")
+plt.ylabel("Fidelity")
+plt.title("Yb-Yb Entanglement Fidelity vs QFC Noise")
+plt.grid(True)
+plt.savefig('fid_to_QFC_noise.png')
+
+
+
+
+
+###################################################################################################
+
+
+
+'''
 # log_files = glob.glob("dark_count=*.log")
 log_files_1389 = glob.glob("pce=*,lambda=1389,*.log")
 log_files_556 = glob.glob("pce=*,lambda=556,*.log")
@@ -286,3 +359,5 @@ plt.savefig('ent_attempts_to_pce.png')
 
 # print(dc_sorted)
 # print(fid_sorted)
+
+'''

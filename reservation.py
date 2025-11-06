@@ -9,14 +9,14 @@ from enum import Enum, auto
 from typing import List, TYPE_CHECKING, Any, Dict, Tuple
 
 if TYPE_CHECKING:
-    from custom_node import QuantumRouter
+    from nodes import QuantumRouter
     from sequence.resource_management.memory_manager import MemoryInfo, MemoryManager
     from generation import EntanglementProtocol
 
 from sequence.resource_management.rule_manager import Rule, Arguments
 from sequence.entanglement_management.generation.barret_kok import BarretKokA
 from sequence.entanglement_management.generation.generation_base import EntanglementGenerationA
-from generation import EntanglementGenerationTimeBinYb
+from generation import YbEGA
 from sequence.entanglement_management.purification.bbpssw_circuit import BBPSSWCircuit
 
 from sequence.entanglement_management.swapping import EntanglementSwappingA, EntanglementSwappingB
@@ -24,48 +24,12 @@ from sequence.message import Message
 from sequence.protocol import StackProtocol
 from sequence.kernel.event import Event
 from sequence.kernel.process import Process
+from sequence.network_management.reservation import RSVPMsgType, ResourceReservationMessage, Reservation, MemoryTimeCard, QCap
 
 ENTANGLED = 'ENTANGLED'
 RAW = 'RAW'
 
-
-class RSVPMsgType(Enum):
-    """Defines possible message types for the reservation protocol."""
-
-    REQUEST = auto()
-    REJECT = auto()
-    APPROVE = auto()
-
-
-class ResourceReservationMessage(Message):
-    """Message used by resource reservation protocol.
-
-    This message contains all information passed between reservation protocol instances.
-    Messages of different types contain different information.
-
-    Attributes:
-        msg_type (RSVPMsgType): defines the message type.
-        receiver (str): name of destination protocol instance.
-        reservation (Reservation): reservation object relayed between nodes.
-        qcaps (List[QCaps]): cumulative quantum capacity object list (if `msg_type == REQUEST`)
-        path (List[str]): cumulative node list for entanglement path (if `msg_type == APPROVE` or `msg_type == REJECT`)
-    """
-
-    def __init__(self, msg_type: any, receiver: str, reservation: "Reservation", **kwargs):
-        super().__init__(msg_type, receiver)
-        self.reservation = reservation
-        if self.msg_type is RSVPMsgType.REQUEST:
-            self.qcaps = []
-        elif self.msg_type is RSVPMsgType.REJECT:
-            self.path = kwargs["path"]
-        elif self.msg_type is RSVPMsgType.APPROVE:
-            self.path = kwargs["path"]
-        else:
-            raise Exception("Unknown type of message")
-
-    def __str__(self):
-        return f"|type={self.msg_type}; reservation={self.reservation}|"
-
+############# NOTE ONLY CHANGES HERE ARE THE RULE ACTION AND THE CREATE RULES METHOD
 
 # entanglement generation
 
@@ -79,7 +43,7 @@ def eg_rule_action1(memories_info: List["MemoryInfo"], args: Dict[str, Any]) -> 
     index = args["index"]
     memo_type = args["memo_type"]
     if memo_type == "Yb":
-        function_name = 'EntanglementGenerationTimeBinYb'
+        function_name = 'YbEGA'
         protocol = globals()[function_name](None, "EGTB." + memory.name, mid, path[index-1], memory, memo_type)
         # protocol = EntanglementGenerationTimeBin{memory.wavelength}
     else:
@@ -97,9 +61,9 @@ def eg_rule_action2(memories_info: List["MemoryInfo"], args: Arguments) -> Tuple
     memory = memories[0]
     memo_type = args["memo_type"]
     if memo_type == "Yb":
-        function_name = f'EntanglementGenerationTimeBinYb'
+        function_name = f'YbEGA'
         protocol = globals()[function_name](None, "EGTB" + "." + memory.name, mid, path[index-1], memory, memo_type)
-        protocol_type = EntanglementGenerationTimeBinYb
+        protocol_type = YbEGA
     else:
         protocol = EntanglementGenerationA(None, "EGA." + memory.name, mid, path[index + 1], memory)
         protocol_type = EntanglementGenerationA
@@ -631,168 +595,3 @@ class ResourceReservationProtocol(StackProtocol):
     def set_swapping_degradation(self, degradation: float) -> None:
         assert 0 <= degradation <= 1
         self.es_degradation = degradation
-
-
-class Reservation:
-    """Tracking of reservation parameters for the network manager.
-       Each request will generate a reservation
-
-    Attributes:
-        initiator (str): name of the node that created the reservation request.
-        responder (str): name of distant node with witch entanglement is requested.
-        start_time (int): simulation time at which entanglement should be attempted.
-        end_time (int): simulation time at which resources may be released.
-        memory_size (int): number of entangled memory pairs requested.
-        path (list): a list of router names from the source to destination
-        entanglement_number (int): the number of entanglement pair that the request ask for.
-        identity (int): the ID of a request.
-    """
-
-    def __init__(self, initiator: str, responder: str, start_time: int,
-                 end_time: int, memory_size: int, fidelity: float, entanglement_number: int = 1, identity: int = 0):
-        """Constructor for the reservation class.
-
-        Args:
-            initiator (str): node initiating the request.
-            responder (str): node with which entanglement is requested.
-            start_time (int): simulation start time of entanglement.
-            end_time (int): simulation end time of entanglement.
-            memory_size (int): number of entangled memories requested.
-            fidelity (float): desired fidelity of entanglement.
-            entanglement_number (int): the number of entanglement the request ask for.
-            identity (int): the ID of a request
-        """
-
-        self.initiator = initiator
-        self.responder = responder
-        self.start_time = start_time
-        self.end_time = end_time
-        self.memory_size = memory_size
-        self.fidelity = fidelity
-        self.entanglement_number = entanglement_number
-        self.identity = identity
-        self.path = []
-        assert self.start_time < self.end_time
-        assert self.memory_size > 0
-
-    def __str__(self) -> str:
-        s = "|initiator={}; responder={}; start_time={:,}; end_time={:,}; memory_size={}; target_fidelity={}; entanglement_number={}; identity={}|".format(
-              self.initiator, self.responder, int(self.start_time), int(self.end_time), self.memory_size, self.fidelity, self.entanglement_number, self.identity)
-        return s
-
-    def __repr__(self) -> str:
-        return self.__str__()
-
-    def set_path(self, path: List[str]):
-        self.path = path
-
-    def __eq__(self, other: "Reservation") -> bool:
-        return other.initiator == self.initiator and \
-               other.responder == self.responder and \
-               other.start_time == self.start_time and \
-               other.end_time == self.end_time and \
-               other.memory_size == self.memory_size and \
-               other.fidelity == self.fidelity
-
-    def __lt__(self, other: "Reservation") -> bool:
-        return self.identity < other.identity
-
-    def __hash__(self):
-        return hash((self.initiator, self.responder, self.start_time, self.end_time, self.memory_size, self.fidelity))
-
-
-class MemoryTimeCard:
-    """Class for tracking reservations on a specific memory.
-       Each quantum memory in a memory array is associated with a memory time card
-
-    Attributes:
-        memory_index (int): index of memory being tracked (in memory array).
-        reservations (List[Reservation]): list of reservations for the memory.
-    """
-
-    def __init__(self, memory_index: int):
-        """Constructor for time card class.
-
-        Args:
-            memory_index (int): index of memory to track.
-        """
-
-        self.memory_index = memory_index
-        self.reservations = []
-
-    def add(self, reservation: "Reservation") -> bool:
-        """Method to add reservation.
-
-        Will use `schedule_reservation` method to determine index to insert reservation.
-
-        Args:
-            reservation (Reservation): reservation to add.
-
-        Returns:
-            bool: whether reservation was inserted successfully.
-        """
-        
-        position = self.schedule_reservation(reservation)
-        if position >= 0:
-            self.reservations.insert(position, reservation)
-            return True
-        else:
-            return False
-
-    def remove(self, reservation: "Reservation") -> bool:
-        """Method to remove a reservation.
-
-        Args:
-            reservation (Reservation): reservation to remove.
-
-        Returns:
-            bool: if reservation was already on the memory (return True) or not (return False).
-        """
-
-        try:
-            position = self.reservations.index(reservation)
-            self.reservations.pop(position)
-            return True
-        except ValueError:
-            return False
-
-    def schedule_reservation(self, reservation: "Reservation") -> int:
-        """Method to add reservation to a memory.
-
-        Will return index at which reservation can be inserted into memory reservation list.
-        If no space found for reservation, will raise an exception.
-
-        Args:
-            reservation (Reservation): reservation to schedule.
-
-        Returns:
-            int: index to insert reservation in reservation list.
-
-        Raises:
-            Exception: no valid index to insert reservation.
-        """
-
-        start, end = 0, len(self.reservations) - 1
-        while start <= end:
-            mid = (start + end) // 2
-            if self.reservations[mid].start_time > reservation.end_time:
-                end = mid - 1
-            elif self.reservations[mid].end_time < reservation.start_time:
-                start = mid + 1
-            elif (max(self.reservations[mid].start_time, reservation.start_time) <=
-                    min(self.reservations[mid].end_time, reservation.end_time)):
-                return -1
-            else:
-                raise Exception("Unexpected status")
-        return start
-
-
-class QCap:
-    """Quantum Capacity. Class to collect local information for the reservation protocol
-
-    Attributes:
-        node (str): name of current node.
-    """
-
-    def __init__(self, node: str):
-        self.node = node

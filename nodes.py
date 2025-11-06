@@ -16,15 +16,15 @@ if TYPE_CHECKING:
     from sequence.protocol import StackProtocol
     from sequence.resource_management.memory_manager import MemoryInfo
     from sequence.network_management.reservation import Reservation
-    from sequence.components.optical_channel import ClassicalChannel
-    from qchannels import QuantumChannel
+    from sequence.components.optical_channel import ClassicalChannel, QuantumChannel
+    # from qchannels import QuantumChannel
     from memory import Memory
     from photon import Photon
     from sequence.app.request_app import RequestApp
 
 from sequence.kernel.entity import Entity, ClassicalEntity
 from memory import MemoryArray
-from time_bin_bsm import BSM, TimeBinBSM
+from time_bin_bsm import BSM, HetTimeBinBSM
 from sequence.components.light_source import LightSource
 from detector import Detector
 from sequence.qkd.BB84 import BB84
@@ -36,179 +36,12 @@ from sequence.utils import log
 from sequence.components.bsm import SingleAtomBSM, SingleHeraldedBSM, PolarizationBSM
 from encoding import time_bin, yb_time_bin
 from copy import copy
-from generation import EntanglementGenerationB, EntanglementGenerationMessage
+from generation import YbEGB
+from sequence.topology.node import Node
 
-class Node(Entity):
-    """Base node type that has both classical and quantum capabilties.
-    
-    Provides default interfaces for network.
-
-    Attributes:
-        name (str): label for node instance.
-        timeline (Timeline): timeline for simulation.
-        cchannels (Dict[str, ClassicalChannel]): mapping of destination node names to classical channel instances.
-        qchannels (Dict[str, QuantumChannel]): mapping of destination node names to quantum channel instances.
-        protocols (List[Protocol]): list of attached protocols.
-        generator (np.random.Generator): random number generator used by node.
-        components (Dict[str, Entity]): mapping of local component names to objects.
-        first_component_name (str): name of component that first receives incoming qubits.
-        gate_fid (float): fidelity of multi-qubit gates (usually CNOT) that can be performed on the node.
-        meas_fid (float): fidelity of single-qubit measurements (usually Z measurement) that can be performed on the node.
-    """
-
-    def __init__(self, name: str, timeline: "Timeline", seed=None, gate_fid: float = 1, meas_fid: float = 1):
-        """Constructor for node.
-
-        name (str): name of node instance.
-        timeline (Timeline): timeline for simulation.
-        seed (int): seed for random number generator, default None
-        """
-
-        log.logger.info("Create Node {}".format(name))
-        super().__init__(name, timeline)
-        self.owner = self
-        self.cchannels = {}  # mapping of destination node names to classical channels
-        self.qchannels = {}  # mapping of destination node names to quantum channels
-        self.protocols = []
-        self.generator = np.random.default_rng(seed)
-        self.components = {}
-        self.first_component_name = None
-
-        # note that we are assuming homogeneous gates and measurements,
-        # i.e. every gate on one specific node has identical fidelity, and so is measurement.
-        self.gate_fid = gate_fid
-        self.meas_fid = meas_fid
-        assert 0 <= gate_fid <= 1 and 0 <= meas_fid <= 1, "Gate fidelity and measurement fidelity must be between 0 and 1."
-
-    def init(self) -> None:
-        pass
-
-    def set_seed(self, seed: int) -> None:
-        self.generator = np.random.default_rng(seed)
-
-    def get_generator(self) -> np.random.Generator:
-        return self.generator
-
-    def add_component(self, component: Entity) -> None:
-        """Adds a hardware component to the node.
-
-        Args:
-            component (Entity): local hardware component to add.
-        """
-
-        self.components[component.name] = component
-        component.owner = self
-
-    def set_first_component(self, name: str):
-        """set the name of component that first receives incoming qubits.
-
-        Args:
-            name (str): the name of component that first receives incoming qubits.
-        """
-        self.first_component_name = name
-
-    def assign_cchannel(self, cchannel: "ClassicalChannel", another: str) -> None:
-        """Method to assign a classical channel to the node.
-
-        This method is usually called by the `ClassicalChannel.set_ends` method and not called individually.
-
-        Args:
-            cchannel (ClassicalChannel): channel to add.
-            another (str): name of node at other end of channel.
-        """
-
-        self.cchannels[another] = cchannel
-
-    def assign_qchannel(self, qchannel: "QuantumChannel", another: str) -> None:
-        """Method to assign a quantum channel to the node.
-
-        This method is usually called by the `QuantumChannel.set_ends` method and not called individually.
-
-        Args:
-            qchannel (QuantumChannel): channel to add.
-            another (str): name of node at other end of channel.
-        """
-
-        self.qchannels[another] = qchannel
-
-    def send_message(self, dst: str, msg: "Message", priority=inf) -> None:
-        """Method to send classical message.
-
-        Args:
-            dst (str): name of destination node for message.
-            msg (Message): message to transmit.
-            priority (int): priority for transmitted message (default inf).
-        """
-        log.logger.info("{} send message {} to {}".format(self.name, msg, dst))
-
-        if priority == inf:
-            priority = self.timeline.schedule_counter
-        self.cchannels[dst].transmit(msg, self, priority)
-
-    def receive_message(self, src: str, msg: "Message") -> None:
-        """Method to receive message from classical channel.
-
-        Searches through attached protocols for those matching message, then invokes `received_message` method of protocol(s).
-
-        Args:
-            src (str): name of node sending the message.
-            msg (Message): message transmitted from node.
-        """
-        log.logger.info("{} receive message {} from {}".format(self.name, msg, src))
-        # signal to protocol that we've received a message
-        if msg.receiver is not None:
-            for protocol in self.protocols:
-                if protocol.name == msg.receiver and protocol.received_message(src, msg):
-                    return
-        else:
-            matching = [p for p in self.protocols if type(p) == msg.protocol_type]
-            for p in matching:
-                p.received_message(src, msg)
-
-    def schedule_qubit(self, dst: str, min_time: int) -> int:
-        """Interface for quantum channel `schedule_transmit` method."""
-
-        return self.qchannels[dst].schedule_transmit(min_time)
-
-    def send_qubit(self, dst: str, qubit) -> None:
-        """Interface for quantum channel `transmit` method."""
-        # print(len(self.qchannels[dst].send_bins))
-        self.qchannels[dst].transmit(qubit, self)
-
-    def receive_qubit(self, src: str, qubit) -> None:
-        """Method to receive qubits from quantum channel.
-
-        By default, forwards qubit to hardware element designated by field `receiver_name`.
-
-        Args:
-            src (str): name of node where qubit was sent from.
-            qubit (any): transmitted qubit. Typically a Photon object.
-        """
-
-        self.components[self.first_component_name].get(qubit)
-
-    def get_components_by_type(self, component_type: Union[str, type]) -> list:
-        """Method to return all components of a specific type.
-        Args:
-            component_type (str/type): The type of components to filter for.
-        Returns:
-            list: A list of components matching the requested type.
-        """
-        if isinstance(component_type, str):
-            return [comp for comp in self.components.values() if comp.__class__.__name__ == component_type]
-        if isinstance(component_type, type):
-            return [comp for comp in self.components.values() if isinstance(comp, component_type)]
-        return []
-
-    def change_timeline(self, timeline: "Timeline"):
-        self.timeline = timeline
-        for component in self.components.values():
-            component.change_timeline(timeline)
-        for cc in self.cchannels.values():
-            cc.change_timeline(timeline)
-
-
-class BSMNode(Node):
+## THIS IS MEANT TO BE A REPLACEMENT NOT AND INHERITANCE OF BSMNode
+# TODO CHANGE THE __init__() to better match BSMNode (use component templates instead of encoding type)
+class HetBSMNode(Node):
     """Bell state measurement node.
 
     This node provides bell state measurement and the EntanglementGenerationB protocol for entanglement generation.
@@ -221,7 +54,7 @@ class BSMNode(Node):
     """
     # NOTE: CHANGING THIS
     def __init__(self, name: str, timeline: "Timeline", other_nodes: List[str],
-                 encoding_type: str = None, seed=None,) -> None:
+                 seed=None, component_templates=None) -> None:
         """Constructor for BSM node.
 
         Args:
@@ -231,44 +64,36 @@ class BSMNode(Node):
         """
 
         super().__init__(name, timeline, seed)
-        # if not component_templates: # NOTE: NOT USING THIS ATM
-        #     component_templates = {}
+        if not component_templates:
+            component_templates = {}
 
-        # self.encoding_type = component_templates.get('encoding_type', 'single_atom') # NOTE: CHANGING THIS
-        self.encoding_type = encoding_type
+        self.encoding_type = component_templates.get('encoding_type', 'single_atom')
 
         # create BSM object with optional args
         bsm_name = name + ".BSM"
         if self.encoding_type == 'single_atom':
-            # bsm_args = component_templates.get("SingleAtomBSM", {})
-            bsm_args = {}
+            bsm_args = component_templates.get("SingleAtomBSM", {})
             bsm = SingleAtomBSM(bsm_name, timeline, **bsm_args)
         elif self.encoding_type == 'single_heralded':
-            # bsm_args = component_templates.get("SingleHeraldedBSM", {})
-            bsm_args = {}
+            bsm_args = component_templates.get("SingleHeraldedBSM", {})
             bsm = SingleHeraldedBSM(bsm_name, timeline, **bsm_args)
-        elif self.encoding_type == 'time_bin':
-            #NOTE I don't know if we still need this? It's only if we want a generic one too
-            bsm_args = {}
-            time_bin_enc = copy(time_bin)
-            bsm = TimeBinBSM(bsm_name, timeline, time_bin_enc, **bsm_args)
-        elif self.encoding_type == 'yb_time_bin':
-            bsm_args = {}
-            yb_time_bin_enc = copy(yb_time_bin)
-            bsm = TimeBinBSM(bsm_name, timeline, yb_time_bin_enc, **bsm_args)
+        elif self.encoding_type == 'het_time_bin':
+            bsm_args = component_templates.get("Het_TimeBinBSM", {})
+            bsm = HetTimeBinBSM(bsm_name, timeline, **bsm_args)
         else:
             raise ValueError(f'Encoding type {self.encoding_type} not supported')
 
         self.add_component(bsm)
         self.set_first_component(bsm_name)
 
-        self.eg = EntanglementGenerationB(self, "{}_eg".format(name), other_nodes)
+        # TODO if YbEGB inherits from EGB than we need to have multiple options
+        self.eg = YbEGB(self, "{}_eg".format(name), other_nodes)
         bsm.attach(self.eg)
 
     def receive_message(self, src: str, msg: "Message") -> None:
         # signal to protocol that we've received a message
         for protocol in self.protocols:
-            if type(protocol) == msg.protocol_type:
+            if protocol.protocol_type == msg.protocol_type or type(protocol) == msg.protocol_type:
                 if protocol.received_message(src, msg):
                     return
 
@@ -289,7 +114,7 @@ class BSMNode(Node):
         self.protocols[0].others.append(other.name)
 
 
-class QuantumRouter(Node):
+class HetQR(Node):
     """Node for entanglement distribution networks.
 
     This node type comes pre-equipped with memory hardware, along with the default SeQUeNCe modules (sans application).
@@ -304,7 +129,7 @@ class QuantumRouter(Node):
         meas_fid (float): fidelity of single-qubit measurements (usually Z measurement) that can be performed on the node.
     """
 
-    def __init__(self, name, tl, memo_size=50, memo_type=None, wavelength=None, seed=None, component_templates = None, gate_fid: float = 1, meas_fid: float = 1):
+    def __init__(self, name: str, tl: "Timeline", memo_size: int=50, memo_type: str=None, wavelength=None, seed: int=None, component_templates: dict = {}, gate_fid: float = 1, meas_fid: float = 1):
         """Constructor for quantum router class.
 
         Args:
@@ -325,8 +150,8 @@ class QuantumRouter(Node):
 
         # create memory array object with optional args
         self.memo_arr_name = name + ".MemoryArray"
-        memo_arr_args = component_templates.get("MemoryArray", {})
-        self.memo_type = memo_type
+        # memo_arr_args = component_templates.get("MemoryArray", {})
+        self.memo_type = component_templates.get("memo_type", None)
         memory_array = MemoryArray(self.memo_arr_name, tl, num_memories=memo_size, memory_type = self.memo_type, wavelength=wavelength)
         self.add_component(memory_array)
         memory_array.add_receiver(self)
@@ -477,7 +302,7 @@ class QuantumRouter(Node):
         # measurement is 0 for same sign and 1 for different
 
         if psi_sign == 1 and self.basis == "X":
-            same = measurement
+            same = measurement # flip same <-> different
         else:
             same = 1-measurement
 
@@ -489,16 +314,17 @@ class QuantumRouter(Node):
         # https://static-content.springer.com/esm/art%3A10.1038%2Fnature12016/MediaObjects/41586_2013_BFnature12016_MOESM10_ESM.pdf
         # which is in supplementary information of this paper:
         # https://www.nature.com/articles/nature12016#Sec2
-        
+
+        # TODO THIS IS WEIRD, DOES IT REQUIRE num_trials TO BE EVEN?
         rhoZ_same = 2*self.meas_results["Z_same"]/num_trials
         rhoZ_diff = 1 - rhoZ_same
         rhoX_same = 2*self.meas_results["X_same"]/num_trials
         rhoX_diff = 1- rhoX_same
 
-        print(rhoX_diff)
-        print(rhoX_same)
-        print(rhoZ_diff)
-        print(rhoZ_same)
+        # print(rhoX_diff)
+        # print(rhoX_same)
+        # print(rhoZ_diff)
+        # print(rhoZ_same)
 
         f = self.meas_fid * (rhoZ_diff + rhoX_same - rhoX_diff - 2*sqrt(rhoZ_same))/2
         return f

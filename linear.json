@@ -3,25 +3,23 @@
         {
             "name": "router_0",
             "type": "QuantumRouter",
+            "template": "Yb1389",
             "seed": 0,
             "memo_size": 1,
-            "memo_type": "Yb",
-            "wavelength": 1389,
             "group": 0
         },
         {
             "name": "router_1",
             "type": "QuantumRouter",
+            "template": "Yb1389",
             "seed": 1,
             "memo_size": 1,
-            "memo_type": "Yb",
-            "wavelength": 1389,
             "group": 0
         },
         {
             "name": "BSM_0_1",
             "type": "BSMNode",
-            "encoding_type": "yb_time_bin",
+            "template": "yb_yb_time_bin",
             "seed": 0
         }
     ],
@@ -31,7 +29,7 @@
             "source": "router_0",
             "converter": "qfc_0",
             "destination": "BSM_0_1",
-            "distance": 10.0,
+            "distance": 1000.0,
             "attenuation": 0.0003
         },
         {
@@ -39,7 +37,7 @@
             "source": "router_1",
             "converter": "qfc_1",
             "destination": "BSM_0_1",
-            "distance": 10.0,
+            "distance": 1000.0,
             "attenuation": 0.0003
         }
     ],
@@ -47,32 +45,32 @@
         {
             "source": "BSM_0_1",
             "destination": "router_0",
-            "delay": -1
+            "distance": 1000.0
         },
         {
             "source": "router_0",
             "destination": "BSM_0_1",
-            "delay": -1
+            "distance": 1000.0
         },
         {
             "source": "BSM_0_1",
             "destination": "router_1",
-            "delay": -1
+            "distance": 1000.0
         },
         {
             "source": "router_1",
             "destination": "BSM_0_1",
-            "delay": -1
+            "distance": 1000.0
         },
         {
             "source": "router_0",
             "destination": "router_1",
-            "delay": -1
+            "distance": 1000.0
         },
         {
             "source": "router_1",
             "destination": "router_0",
-            "delay": -1
+            "distance": 1000.0
         }
     ],
     "qfcs": [
@@ -85,6 +83,17 @@
             "destination": "BSM_0_1"
         }
     ],
-    "stop_time": Infinity,
+    "templates":
+        {
+            "yb_yb_time_bin":
+                {
+                    "encoding_type": "het_time_bin"
+                },
+            "Yb1389":
+                {
+                    "memo_type": "Yb",
+                    "wavelength": "1389"
+                }
+        },
     "is_parallel": false
 }
