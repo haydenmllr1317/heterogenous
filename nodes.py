@@ -38,6 +38,7 @@ from encoding import time_bin, yb_time_bin
 from copy import copy
 from generation import YbEGB
 from sequence.topology.node import Node
+from qfc import QFC
 
 ## THIS IS MEANT TO BE A REPLACEMENT NOT AND INHERITANCE OF BSMNode
 # TODO CHANGE THE __init__() to better match BSMNode (use component templates instead of encoding type)
@@ -82,6 +83,14 @@ class HetBSMNode(Node):
             bsm = HetTimeBinBSM(bsm_name, timeline, **bsm_args)
         else:
             raise ValueError(f'Encoding type {self.encoding_type} not supported')
+        
+        # add QFCs
+        qfc0 = QFC(name+'.QFC0', self.timeline)
+        qfc1 = QFC(name+'.QFC1', self.timeline)
+        qfc0.add_receiver(bsm)
+        qfc1.add_receiver(bsm)
+        self.add_component(qfc0)
+        self.add_component(qfc1)
 
         self.add_component(bsm)
         self.set_first_component(bsm_name)
@@ -90,6 +99,11 @@ class HetBSMNode(Node):
         self.eg = YbEGB(self, "{}_eg".format(name), other_nodes)
         bsm.attach(self.eg)
 
+    # overwrote this method so that photons go straight to correct QFCs
+    def receive_qubit(self, src: str, photon) -> None:
+        self.components[self.name+'.QFC'+src[-1]].get(photon)
+    
+    # TODO figure out if this is duplicitous and an unecesssary change from the Node version
     def receive_message(self, src: str, msg: "Message") -> None:
         # signal to protocol that we've received a message
         for protocol in self.protocols:

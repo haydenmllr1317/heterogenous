@@ -29,43 +29,35 @@ class YbRouterNetTopo(RouterNetTopo):
     ALL_QFCS = 'qfcs'
     CONVERTER = "converter"
 
-    def __init__(self, conf_file_name: str):
-        self.qfcs = []
-        super().__init__(conf_file_name)
-        
+    # def __init__(self, conf_file_name: str):
+    #     super().__init__(conf_file_name)
 
-    def _load(self, filename: str):
-        super()._load(filename)
-        with open(filename, 'r') as fh:
-            config = json.load(fh)
-        self._add_qfcs(config)
+    # # just adding QFC to channels as converter
+    # def _add_qchannels(self, config: dict) -> None:
+    #     for qc in config.get(self.ALL_Q_CHANNEL, []):
+    #         src_str, dst_str = qc[self.SRC], qc[self.DST]
+    #         src_node = self.tl.get_entity_by_name(src_str)
+    #         if src_node is not None:
+    #             name = qc.get(self.NAME, f"qc.{src_str}.{dst_str}")
+    #             distance = qc[self.DISTANCE]
+    #             attenuation = qc[self.ATTENUATION]
+    #             converter = qc[self.CONVERTER] # NOTE added this
+    #             qc_obj = HetQuantumChannel(name, self.tl, attenuation, distance, qfc=converter)
+    #             qc_obj.set_ends(src_node, dst_str)
+    #             self.qchannels.append(qc_obj)
 
-    # just adding QFC to channels as converter
-    def _add_qchannels(self, config: dict) -> None:
-        for qc in config.get(self.ALL_Q_CHANNEL, []):
-            src_str, dst_str = qc[self.SRC], qc[self.DST]
-            src_node = self.tl.get_entity_by_name(src_str)
-            if src_node is not None:
-                name = qc.get(self.NAME, f"qc.{src_str}.{dst_str}")
-                distance = qc[self.DISTANCE]
-                attenuation = qc[self.ATTENUATION]
-                converter = qc[self.CONVERTER] # NOTE added this
-                qc_obj = HetQuantumChannel(name, self.tl, attenuation, distance, qfc=converter)
-                qc_obj.set_ends(src_node, dst_str)
-                self.qchannels.append(qc_obj)
-
-    # make QFC not a real desination in terms of router map
-    def _map_bsm_routers(self, config):
-        for qc in config[self.ALL_Q_CHANNEL]:
-            src, dst = qc[self.SRC], qc[self.DST]
-            for qfc in config[self.ALL_QFCS]:
-                if dst == qfc[self.NAME]:
-                    dst = qfc[self.DST]
-                    break
-            if dst in self.bsm_to_router_map:
-                self.bsm_to_router_map[dst].append(src)
-            else:
-                self.bsm_to_router_map[dst] = [src]
+    # # make QFC not a real desination in terms of router map
+    # def _map_bsm_routers(self, config):
+    #     for qc in config[self.ALL_Q_CHANNEL]:
+    #         src, dst = qc[self.SRC], qc[self.DST]
+    #         for qfc in config[self.ALL_QFCS]:
+    #             if dst == qfc[self.NAME]:
+    #                 dst = qfc[self.DST]
+    #                 break
+    #         if dst in self.bsm_to_router_map:
+    #             self.bsm_to_router_map[dst].append(src)
+    #         else:
+    #             self.bsm_to_router_map[dst] = [src]
 
     # creating HetBSMNode and HetQR
     def _add_nodes(self, config: dict):
@@ -88,10 +80,10 @@ class YbRouterNetTopo(RouterNetTopo):
             node_obj.set_seed(seed)
             self.nodes[node_type].append(node_obj)
     
-    def _add_qfcs(self, config: dict):
-        for qfc in config[self.ALL_QFCS]:
-            name = qfc[self.NAME]
-            destination = qfc[self.DST]
-            converter = QFC(name,self.tl,destination)
-            converter.add_receiver(self.nodes[self.BSM_NODE][0])
-            self.qfcs.append(converter)
+    # def _add_qfcs(self, config: dict):
+    #     for qfc in config[self.ALL_QFCS]:
+    #         name = qfc[self.NAME]
+    #         destination = qfc[self.DST]
+    #         converter = QFC(name,self.tl,destination)
+    #         converter.add_receiver(self.nodes[self.BSM_NODE][0])
+    #         self.qfcs.append(converter)

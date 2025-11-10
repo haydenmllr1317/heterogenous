@@ -22,7 +22,7 @@ def main():
     parser.add_argument('-pce', '--photoncollectionefficiency', type=float, default=0.5, help='efficiency of photon collection into fiber')
     parser.add_argument('-wavelength', '--photonwavelength', type=int, default=1389, help='wavelength of emmitted photons')
     # parser.add_argument('-t_retrap', '--time_to_retrap', type=int, default=40, help="Time atom has been in trap at which we want to retrap (in seconds).") 
-    parser.add_argument('-n', '--numtrials', type=int, default=200, help="number of entangled pairs we generated")
+    parser.add_argument('-n', '--numtrials', type=int, default=10, help="number of entangled pairs we generated")
     parser.add_argument('-dtctor_dc', '--detectordarkcount', type=float, default=0.0, help="Dark count rate, in Hz, for the detector in the BSM.")
     parser.add_argument('-dtctor_eff', '--detectorefficiency', type=float, default=0.85, help="Efficiency for the detector in the BSM.") # default should be 0.85 according to Joaquin
     parser.add_argument('-dtctor_res', '--detectorresolution', type=int, default=50_000, help='Minimum time difference our SNSPDs can resolve.')
@@ -50,13 +50,27 @@ def main():
     tl = network_topo.get_timeline()
     bsm_hardware_name = 'HetTimeBinBSM' # NOTE Is there a better way to do this?
 
+    bsm_node = network_topo.get_nodes_by_type(YbRouterNetTopo.BSM_NODE)[0]
+
     # use harware name to grab encoding-appropriate BSM object
-    bsm = network_topo.get_nodes_by_type(YbRouterNetTopo.BSM_NODE)[0].get_components_by_type(bsm_hardware_name)[0]
-    
+    bsm = bsm_node.get_components_by_type(bsm_hardware_name)[0]
+
     # set detector params
     bsm.update_detectors_params('efficiency', detector_efficiency)
     bsm.update_detectors_params('dark_count', detector_dark_count)
     bsm.update_detectors_params('resolution', detector_time_resolution)
+
+    # set params for QFCs
+    qfc0 = bsm_node.get_components_by_type("QFC")[0]
+    qfc0.input_wvln = wavelength
+    qfc0.output_wvln = bsm_operating_wavelength # TODO make this come out of the json file
+    qfc0.efficiency = qfc_eff
+    qfc0.noise = qfc_noise
+    qfc1 = bsm_node.get_components_by_type("QFC")[1]
+    qfc1.input_wvln = wavelength
+    qfc1.output_wvln = bsm_operating_wavelength # TODO make this come out of the json file
+    qfc1.efficiency = qfc_eff
+    qfc1.noise = qfc_noise
 
 
     #### logging added here ####
@@ -113,14 +127,6 @@ def main():
         bsm.time_bin_separation = mem0.bin_separation # BSM objects need to know bin separation to understand valid temporal click distances
     else:
         raise ValueError(f'Memory must operate with same bin separation, yet mem0={mem0.bin_separation} and mem1 = {mem1.bin_separation}')
-
-    # initiate QFC params
-    for i in range(2):
-        qfc = network_topo.qfcs[i]
-        qfc.input_wvln = wavelength
-        qfc.output_wvln = bsm_operating_wavelength # TODO make this come out of the json file
-        qfc.efficiency = qfc_eff
-        qfc.noise = qfc_noise
 
     for i in range(n):
         if i == 0:

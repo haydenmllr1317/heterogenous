@@ -115,7 +115,7 @@ class HetTimeBinBSM(BSM):
         # for our BSM setup...
         assert len(self.detectors) == 2
 
-    def get(self, photon, **kwargs):
+    def get(self, photon):
         """See base class.
 
         This method adds additional side effects not present in the base class.
@@ -144,7 +144,7 @@ class HetTimeBinBSM(BSM):
             pass
         elif photon.mode_count > 1:
             noise_time = self.owner.timeline.now() + round(self.get_generator().random() * self.bin_width) # where within the detection window noise is added
-            noise_get_args = {'signal': False, 'qkey': photon.quantum_state}
+            noise_get_args = {'photon_type': 0} # noisy photon
             process_noise = Process(self.detectors[detector_num_noise], "get", [], noise_get_args)
             event_noise = Event(noise_time, process_noise)
             self.timeline.schedule(event_noise)
@@ -153,12 +153,12 @@ class HetTimeBinBSM(BSM):
         # add signal
         if measurement == 0: # early photon
             if photon_odds >= photon.loss: # photon survives the QFC
-                get_args = {'signal': True, 'qkey': photon.quantum_state}
+                get_args = {'photon_type': 1} # signal photon
                 self.detectors[detector_num_signal].get(**get_args)
                 log.logger.info(f'{self.name} sent signal photon to detector {detector_num_signal} at early time bin.')
         else: # late photon
             if photon_odds >= photon.loss: # photon survives QFC
-                get_args = {'signal': True, 'qkey': photon.quantum_state}
+                get_args = {'signal': 1} # signal photon
                 process = Process(self.detectors[detector_num_signal], "get", [], get_args)
                 event = Event(late_time, process)
                 self.timeline.schedule(event)
@@ -183,14 +183,10 @@ class HetTimeBinBSM(BSM):
         detector_num = self.detectors.index(detector)
         time = info["time"]
         try:
-            signal = info["signal"] # is True if a signal photon caused detector trigger, False if QFC noise did
+            click_type = info["photon_type"] # 0 if noisy photon, 1 if signal photon
         except Exception:
-            signal = False # detector dark count
-        try:
-            key = info['qkey'] # as long as NOT a detector dark count, will have a quantum key from photon
-        except Exception:
-            key = None # detector dark count
+            click_type = 2 # detector dark count
 
-        info = {'info_type': 'BSM_res', 'res': detector_num, 'time': time, 'signal': signal, 'qkey': key}
+        info = {'info_type': 'BSM_res', 'res': detector_num, 'time': time, 'click_type': click_type}
 
         self.notify(info)

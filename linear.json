@@ -73,16 +73,6 @@
             "distance": 1000.0
         }
     ],
-    "qfcs": [
-        {
-            "name": "qfc_0",
-            "destination": "BSM_0_1"
-        },
-        {
-            "name": "qfc_1",
-            "destination": "BSM_0_1"
-        }
-    ],
     "templates":
         {
             "yb_yb_time_bin":

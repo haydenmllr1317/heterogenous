@@ -33,24 +33,23 @@ class QFC(Entity):
     def init(self) -> None:
         pass
 
-    def receive_qubit(self, source_name: str, photon: Photon): 
+    def get(self, photon: Photon): 
         '''
         Method to receive photon and take further action.
         If the photon has the correct wavelength and isn't too lossy, we 
         send the photon onto this QFC's receiver. Otherwise, we do nothing.
 
         Args:
-        source_name (str): Name of object that sent photon to this QFC.
         photon (Photon): Photon objected being converted.
         '''
-        log.logger.info(f'{self.name} received a photon from {source_name}')
+        # log.logger.info(f'{self.name} received a photon')
 
         # NOTE don't know how to handle wrong wavelength yet
         # if photon.wavelength != self.input_wvln:
         #     raise ValueError(f'{self.name} consumes wavelength of {self.input_wvln} but received photon with wavelength of {photon.wavelength}.')
 
         if photon.wavelength == self.input_wvln:
-            if self.get_generator().random() >= photon.loss:
+            if self.owner.get_generator().random() >= photon.loss:
                 photon.loss = 0 # reset loss to zero as we have already evaluated all old origins of loss
                 photon.wavelength = self.output_wvln # actually convert the wavelength 
                 self.send_to_receiver(photon)
@@ -79,7 +78,7 @@ class QFC(Entity):
 
         if self.get_generator().random() < self.noise: # noise photon added
             photon.add_mode_count(1)
-            self._receivers[0].receive_qubit(self.name, photon)
+            self._receivers[0].get(photon)
         else: # no noise photon added
-            self._receivers[0].receive_qubit(self.name, photon)
+            self._receivers[0].get(photon)
 
