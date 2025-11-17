@@ -94,22 +94,33 @@ class HetTimeBinBSM(BSM):
         if detectors is None:
             detectors = [{}, {}]
 
-        super().__init__(name, timeline, phase_error, detectors)
-        self.encoding = 'het_time_bin'
+        # super from Entity class
+        self.name: str                  = name
+        self.timeline: Timeline         = timeline
+        self.owner: "Entity" | None     = None
+        self._observers: list[Any]      = []
+        self._receivers: list["Entity"] = []
+        timeline.add_entity(self)
 
-        self.last_res = [-1, -1]
-        self.early_early = 0 # currently not using
-        self.early_late = 0 # currently not using
-        self.late_early = 0 # currently not using
-        self.late_late = 0 # currently not using
-        self.desired_state = None # currently not using
-        self.trigger_count = 0
-        self.appropriate_time_photon_count = 0
-        self.approved_state_invalid_time_photon_count = 0
-        self.invalid_state_photon_count = 0
+        # super from BSM class
+        self.encoding = "het_time_bin"
+        self.phase_error = phase_error
 
-        self.time_bin_separation = None # time separating our bins
-        self.bin_width = None # size of our time bins
+        self.detectors = []
+        if detectors is not None:
+            for i, d in enumerate(detectors):
+                if d is not None:
+                    detector = Detector(f"{self.name}_{i}", timeline, **d)
+                    detector.attach(self)
+                    detector.owner = self
+                else:
+                    detector = None
+                self.detectors.append(detector)
+
+        self.bin_separation = 0 # time separating our bins
+        self.bin_width = 0 # size of our time bins
+
+        self.measurement = None
         
         
         # for our BSM setup...
@@ -129,40 +140,35 @@ class HetTimeBinBSM(BSM):
 
         qm = self.timeline.quantum_manager
         key = photon.quantum_state # key pointing to ket state of photon
-        photon_odds = self.get_generator().random()
-        measurement = qm.run_circuit(self._meas_circuit, [key], self.get_generator().random())[key]
-
-        late_time = self.timeline.now() + self.time_bin_separation # time of late photon
+        measurement = qm.run_circuit(self._meas_circuit, [key], self.get_generator().random())[key] # 0 for early, 1 for late
 
         detector_num_signal = self.get_generator().choice([0,1]) # detector where signal photon goes
         detector_num_noise = self.get_generator().choice([0,1]) # detector where noise photon goes
 
+        self.measurement = measurement # adding this for tracking weird noise issues
+
         # add noise if needed
         if photon.mode_count == 0:
             raise ValueError(f"Shouldn't have zero photons in {photon.name} mode.")
-        elif photon.mode_count == 1:
+        elif photon.mode_count == 1: # only signal in mode
             pass
-        elif photon.mode_count > 1:
-            noise_time = self.owner.timeline.now() + round(self.get_generator().random() * self.bin_width) # where within the detection window noise is added
+        elif photon.mode_count > 1: # nosie photon in mode
+            self.owner.noise_to_detector += 1
+            noise_bin = self.get_generator().choice([0,1]) # 0 for early, 1 for late
+            noise_time = self.owner.timeline.now() + (noise_bin*self.bin_separation) + round(self.get_generator().random() * self.bin_width) # where within appropriate detection window noise is added
             noise_get_args = {'photon_type': 0} # noisy photon
             process_noise = Process(self.detectors[detector_num_noise], "get", [], noise_get_args)
             event_noise = Event(noise_time, process_noise)
             self.timeline.schedule(event_noise)
 
-
         # add signal
-        if measurement == 0: # early photon
-            if photon_odds >= photon.loss: # photon survives the QFC
-                get_args = {'photon_type': 1} # signal photon
-                self.detectors[detector_num_signal].get(**get_args)
-                log.logger.info(f'{self.name} sent signal photon to detector {detector_num_signal} at early time bin.')
-        else: # late photon
-            if photon_odds >= photon.loss: # photon survives QFC
-                get_args = {'signal': 1} # signal photon
-                process = Process(self.detectors[detector_num_signal], "get", [], get_args)
-                event = Event(late_time, process)
-                self.timeline.schedule(event)
-                log.logger.info(f'{self.name} sent signal photon to detector {detector_num_signal} at late time bin.')
+        photon_odds = self.get_generator().random()
+        if photon_odds >= photon.loss: # photon survives to detector
+            signal_get_args = {'photon_type': 1} # signal photon
+            signal_time = self.timeline.now() + (measurement * self.bin_separation) + round(self.get_generator().random() * self.bin_width) # where within appropriate detrection window noise is added
+            process_signal = Process(self.detectors[detector_num_signal], "get", [], signal_get_args)
+            event_signal = Event(signal_time, process_signal)
+            self.timeline.schedule(event_signal)
                 
 
     def trigger(self, detector: Detector, info: Dict[str, Any]):
@@ -177,15 +183,15 @@ class HetTimeBinBSM(BSM):
 
         """
 
-        # new trigger function for the millionth time
-        self.trigger_count += 1
-
         detector_num = self.detectors.index(detector)
         time = info["time"]
         try:
             click_type = info["photon_type"] # 0 if noisy photon, 1 if signal photon
         except Exception:
             click_type = 2 # detector dark count
+
+        if click_type == 0:
+            self.owner.trigger_sent += 1
 
         info = {'info_type': 'BSM_res', 'res': detector_num, 'time': time, 'click_type': click_type}
 

@@ -49,12 +49,14 @@ class QFC(Entity):
         #     raise ValueError(f'{self.name} consumes wavelength of {self.input_wvln} but received photon with wavelength of {photon.wavelength}.')
 
         if photon.wavelength == self.input_wvln:
-            if self.owner.get_generator().random() >= photon.loss:
-                photon.loss = 0 # reset loss to zero as we have already evaluated all old origins of loss
-                photon.wavelength = self.output_wvln # actually convert the wavelength 
-                self.send_to_receiver(photon)
-            else:
-                log.logger.info(f'Photon lost before {self.name}.')
+            # NOTE changing this, I don't think we should check is photon is lost, pump is turned on anyway
+            # if self.owner.get_generator().random() >= photon.loss:
+            #     photon.loss = 0 # reset loss to zero as we have already evaluated all old origins of loss
+            #     photon.wavelength = self.output_wvln # actually convert the wavelength 
+            #     self.send_to_receiver(photon)
+            # else:
+            #     log.logger.info(f'Photon lost before {self.name}.')
+            self.send_to_receiver(photon)
         else:
             log.logger.warning(f'Attempted to convert {photon.wavelength}nm photon in a QFC tuned to {self.input_wvln}nm.')
 
@@ -76,7 +78,9 @@ class QFC(Entity):
         if self.timeline.quantum_manager.states[photon.quantum_state].state[0] != np.complex128(0.7071067811865476+0j):
             raise ValueError('Unprepared state is getting to QFC.')
 
+        self.owner.conversion_counter += 1
         if self.get_generator().random() < self.noise: # noise photon added
+            self.owner.qfc_noise_counter += 1
             photon.add_mode_count(1)
             self._receivers[0].get(photon)
         else: # no noise photon added

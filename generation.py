@@ -116,7 +116,7 @@ class YbEGA(EntanglementGenerationA):
 
         # memory internal info
         self.ent_round = 0  # keep track of current stage of protocol
-        self.psi_sign = -1 # 0 for psi^+ and 1 for psi^-
+        self.psi_sign = None # 1 for psi^+ and -1 for psi^-
         self.last_res = [0,-1]  # keep track of bsm measurements to distinguish Psi+ and Psi-
 
         self.scheduled_events = []
@@ -140,12 +140,15 @@ class YbEGA(EntanglementGenerationA):
         # self.photon_keys = [] # list of keys from recent photons that hit detectors (list element is None if detector dark count)
         # self.detector_hits = [] # list of recent detectors clicked
 
+        #TODO 
+        # make early/late click types into an enum for ease of reading/bug checking
+
         # these lists are all updated in parity
-        self.early_triggers = [] # list of times when BSM clicked within early time bin
+        # self.early_triggers = [] # list of times when BSM clicked within early time bin
         self.early_click_types = [] # list of booleans determining whether early clicks were signals or not
         self.early_detectors = [] # list of detectors clicked in early time bin
 
-        self.late_triggers = [] # list of times when BSM clicked within late time bin
+        # self.late_triggers = [] # list of times when BSM clicked within late time bin
         self.late_click_types = [] # list of booleans determining whether late clicks were signals or not
         self.late_detectors = [] # list of detectors clicked in late time bin
 
@@ -208,11 +211,9 @@ class YbEGA(EntanglementGenerationA):
         
         self.detector_resolution = None
 
-        self.early_triggers = [] # list of times when BSM clicked within early time bin
         self.early_click_types = [] # list of booleans determining whether early clicks were signals or not
         self.early_detectors = [] # list of detectors clicked in early time bin
 
-        self.late_triggers = [] # list of times when BSM clicked within late time bin
         self.late_click_types = [] # list of booleans determining whether late clicks were signals or not
         self.late_detectors = [] # list of detectors clicked in late time bin
 
@@ -241,41 +242,54 @@ class YbEGA(EntanglementGenerationA):
         if self.ent_round == 1:
             return True
         
-        elif self.ent_round == 2 and (len(self.early_triggers) == 1) and (len(self.late_triggers) == 1):
+        elif self.ent_round == 2:
             # three things to consider:
             # psi parity (detector nums)
             # signal or not
 
-            qm = self.owner.timeline.quantum_manager
+            if len(self.late_click_types) == 2:
+                self.owner.ll += 1
 
-            other_key = self.owner.timeline.get_entity_by_name(self.remote_node_name).get_components_by_type("MemoryArray")[0].memories[0].qstate_key
+            if (len(self.early_click_types) == 1) and (len(self.late_click_types) == 1):
+                qm = self.owner.timeline.quantum_manager
 
-            if (self.early_click_types[0]==1) and (self.late_click_types[0]==1): # both signal photons
+                other_key = self.owner.timeline.get_entity_by_name(self.remote_node_name).get_components_by_type("MemoryArray")[0].memories[0].qstate_key
+
                 if self.early_detectors[0] == self.late_detectors[0]: # psi+
-                    _set_state_with_fidelity([self.memory.qstate_key, other_key], self._psi_plus, 1.0, self.owner.get_generator(), qm) # NOTE hardcoded fidelity to 1.0
+                    self.psi_sign = 1
                 else: # psi-
-                    _set_state_with_fidelity([self.memory.qstate_key, other_key], self._psi_minus, 1.0, self.owner.get_generator(), qm) # NOTE hardcoded fidelity to 1.0
-            # TODO really be conscientious about how we maintaing quantum keys when entanglement is faked
-            # NOTE unsure if this is right, at some point must be thoughtful about how we hold the the states 
-            # else: # the clicks aren't BOTH signals
-            #     log.logger.info('Potential dark count state (correct timing interval).') 
-            #     if self.early_click_types[0] != 2: # detector trigger comes from signal or QFC noise (NOT detector dark count)
-            #         qm.set([self.early_qkeys[0]], self._plus_state)
-            #     if self.late_click_types[0] != 2:
-            #         qm.set([self.late_qkeys[0]], self._plus_state) # detector trigger comes from signal or QFC noise (NOT detector dark count)
+                    self.psi_sign = -1
 
-            self._reset_params() # round is over, need to reset
-            self._entanglement_succeed()
-            return False
+                if (self.early_click_types[0]==1) and (self.late_click_types[0]==1): # both signal photons
+                    if self.psi_sign == 1: # psi+
+                        _set_state_with_fidelity([self.memory.qstate_key, other_key], self._psi_plus, 1.0, self.owner.get_generator(), qm) # NOTE hardcoded fidelity to 1.0
+                    else: # psi-
+                        _set_state_with_fidelity([self.memory.qstate_key, other_key], self._psi_minus, 1.0, self.owner.get_generator(), qm) # NOTE hardcoded fidelity to 1.0
+                else:
+                    # print(self.owner.timeline.get_entity_by_name('BSM_0_1.BSM').measurement)
+                    if (self.early_click_types[0] != 0) and (self.late_click_types[0] != 0):
+                        raise ValueError('Unexpected cause of fake entanglement.')
+                    log.logger.warning('False positive entanglement heralded.')
+                # TODO really be conscientious about how we maintaing quantum keys when entanglement is faked
+                # NOTE unsure if this is right, at some point must be thoughtful about how we hold the the states 
+                # else: # the clicks aren't BOTH signals
+                #     log.logger.info('Potential dark count state (correct timing interval).') 
+                #     if self.early_click_types[0] != 2: # detector trigger comes from signal or QFC noise (NOT detector dark count)
+                #         qm.set([self.early_qkeys[0]], self._plus_state)
+                #     if self.late_click_types[0] != 2:
+                #         qm.set([self.late_qkeys[0]], self._plus_state) # detector trigger comes from signal or QFC noise (NOT detector dark count)
+
+                self._reset_params() # round is over, need to reset
+                self._entanglement_succeed()
+                return True
+            else:
+                log.logger.debug(f'Early and late time bins had {len(self.early_click_types)},{len(self.late_click_types)} clicks.')
+                self._reset_params() # round is over, need to reset
+                self._entanglement_fail()
+                return False
 
         else:
-            # entanglement failed
-            if self.ent_round != 2:
-                raise ValueError('Ent Round should be 2 but is' + str(self.ent_round))
-            self._reset_params() # round is over, need to reset
-            self._entanglement_fail()
-
-            return False
+            raise ValueError('Ent round should never reach 3')
 
 
     def emit_event(self) -> None:
@@ -376,7 +390,8 @@ class YbEGA(EntanglementGenerationA):
             # schedule emit
             process = Process(self, "emit_event", [])
             # CHANGED:
-            event = Event(emit_time - emit_delay, process) # NOTE changed to min_time from emit_time
+            begin_emit_event = emit_time - emit_delay
+            event = Event(time=begin_emit_event, process=process)
             # event = Event(min_time, process)
             self.owner.timeline.schedule(event)
             self.scheduled_events.append(event)
@@ -468,15 +483,23 @@ class YbEGA(EntanglementGenerationA):
 
             # early time bin
             if self.early_bin[0] <= time <= self.early_bin[1]:
-                self.early_triggers.append(time)
+                # self.early_triggers.append(time)
+                # if click_type == 1:
+                #     print(time - self.early_bin[0])
+                #     pass
                 self.early_click_types.append(click_type)
                 self.early_detectors.append(detector_num)
                 
             # late time bin
             elif self.late_bin[0] <= time <= self.late_bin[1]:
-                self.late_triggers.append(time)
+                if click_type == 1:
+                    pass
+                # self.late_triggers.append(time)
                 self.late_click_types.append(click_type)
                 self.late_detectors.append(detector_num) 
+            else:
+                log.logger.warning('Photon found outside a bin.')
+                print('something funny happeing here')
         else:
             raise Exception("Invalid message {} received by EG on node {}".format(msg_type, self.owner.name))
 
@@ -507,7 +530,7 @@ class YbEGA(EntanglementGenerationA):
 
         time_to_measurement_results = self.owner.timeline.now() + self.memory.readout_time # current time + time it takes to measure
         if self.primary:
-            result, _ = self.memory.measure()
+            result = self.memory.measure()
             process = Process(self.owner, "save_measurement", [self.psi_sign, result])
             if self.owner.basis == "X":
                 time_to_measurement_results += self.memory.raman_half_pi_pulse_time
@@ -560,7 +583,7 @@ class YbEGB(EntanglementGenerationB):
 
         res = info["res"]
         time = info["time"]
-        resolution = bsm.resolution
+        resolution = bsm.detectors[0].time_resolution
 
         for node in self.others:
             message = HetEntanglementGenerationMessage(GenerationMsgType.MEAS_RES, None,              # receiver is None (not paired)

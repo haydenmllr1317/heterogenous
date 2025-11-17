@@ -172,9 +172,14 @@ class Yb1389States(Enum):
     S0 = float(-1) # for 1S0 state
 
     # the values of these three are their branching ratios
-    P0 = 0.637 # for 3P0 state
-    P1 = 0.354 # for 3P1 state
-    P2 = 0.009 # for 3P2 state
+    # NOTE CHANGING THESE
+    # P0 = 0.637 # for 3P0 state
+    # P1 = 0.354 # for 3P1 state
+    # P2 = 0.009 # for 3P2 state
+
+    P0 = 1.0 # for 3P0 state
+    P1 = 0.0 # for 3P1 state 
+    P2 = 0.0 # for 3P2 state
     
     # arbitrary value now
     LOST = float(-2) # for atom fallen out of trap
@@ -252,9 +257,9 @@ class Yb(Memory):
         photon.add_loss(1 - self.efficiency)
 
         # need to add loss for size of time-bin (atom may not have had time to decay)
-        late_decay_prob = e**(-self.bin_width/self.state_lifetime) # probability photon not released after self.bin_width
-        if self.get_generator().random() < late_decay_prob: # photon not released inside detector window
-            photon.loss = 1.0
+        # NOTE COMMENTING THIS OUT FOR bug CHECKING
+        # late_decay_prob = e**(-self.bin_width/self.state_lifetime) # probability photon not released after self.bin_width
+        # photon.add_loss(loss=late_decay_prob)
 
         self._receivers[0].get(photon, dst=dst)
         self.excited_photon = photon
@@ -274,15 +279,16 @@ class Yb(Memory):
             added_delay = 0
 
         # 3% loss due to depumping from 3P0 to 1S0
-        if self.atom_state != Yb1389States.LOST and self.wavelength == 1389:
-            if self.get_generator().random() >= .975:
-                self.atom_state = Yb1389States.LOST
-                self.efficiency = 0
-                log.logger.info("Atom " + str(self.name) + " lost in depumping.")
-            else:
-                # if not lost, atoms should already be in correct state here
-                if self.wavelength == 1389:
-                    self.atom_state = Yb1389States.P0
+        # NOTE COMMENTED THIS OUT FOR TRIALS
+        # if self.atom_state != Yb1389States.LOST and self.wavelength == 1389:
+        #     if self.get_generator().random() >= .975:
+        #         self.atom_state = Yb1389States.LOST
+        #         self.efficiency = 0
+        #         log.logger.info("Atom " + str(self.name) + " lost in depumping.")
+        #     else:
+        #         # if not lost, atoms should already be in correct state here
+        #         if self.wavelength == 1389:
+        #             self.atom_state = Yb1389States.P0
         if self.efficiency != 0:
             self.update_state(self._plus_state)
             log.logger.info('Atom ' + str(self.name) + ' succesfully prepared in |+>.')
@@ -334,30 +340,26 @@ class Yb(Memory):
         for k in keys:
             # print(str(qm.states[k].state))
             if len(qm.states[k].state) != 4: # if not entangled
-                log.logger.warning('dark count state')
+                log.logger.warning('Incorrectly entangled state.')
                 # qm.set([k], [1, 0])
 
         
         if self.owner.basis == "X":
             qm.run_circuit(_H_circuit, keys).keys()
 
-        # if self.basis != 2:
-        #     if self.basis == 1:
-        #         qm.run_circuit(_sDag_circuit, keys)
-        #     qm.run_circuit(_H_circuit, keys).keys()
-
-
         meas = qm.run_circuit(_meas_circuit, keys, self.get_generator().random())
 
-        # now, we just care about whether they are the the same (0) or diff(1)
-
-        if meas[key0] == meas[key1]:
-            result = 0
-        else:
-            result = 1
+        result = [meas[key0], meas[key1]]
+        # for ideal fidelity we expect:
+        #   psi+:
+        #       1,Z
+        #       0,X
+        #   psi-:
+        #       1,Z
+        #       1,X
 
         # print(result, self.owner.basis)
-        return result, self.owner.basis
+        return result
     
     def set_wavelength(self, wavelength: int):
         if wavelength == 1389:

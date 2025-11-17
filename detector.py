@@ -89,7 +89,10 @@ class Detector(Entity):
             # if we measure |0>, return (do not record detection)
             if not res[key]:
                 return
-            
+
+        if 'photon_type' in kwargs:
+            if kwargs['photon_type'] == 0:
+                self.owner.owner.detectors_got += 1  
 
         if self.get_generator().random() < self.efficiency:
             self.record_detection(**kwargs)
@@ -129,16 +132,26 @@ class Detector(Entity):
 
         now = self.timeline.now()
 
+        # if 'photon_type' in kwargs:
+        #     if kwargs['photon_type'] == 0:
+        #         self.owner.owner.detectors_recorded += 1
+
         if now > self.next_detection_time:
             self.recorded_detection_count += 1
             time = round(now / self.time_resolution) * self.time_resolution
             if not kwargs:
                 log.logger.info(f'Dark count from {self.name}.')
             info = {'time': time, **kwargs}
+            if 'photon_type' in kwargs:
+                if kwargs['photon_type'] == 0:
+                    self.owner.owner.detectors_recorded += 1
             self.notify(info)
             self.next_detection_time = now + (1e12 / self.count_rate)  # period in ps
         else:
-            self.undetectable_photon_count += 1
+            if 'photon_type' in kwargs:
+                if kwargs['photon_type'] == 0:
+                    # print(self.next_detection_time - now)
+                    self.undetectable_photon_count += 1
 
     def notify(self, info: Dict[str, Any]):
         """Custom notify function (calls `trigger` method)."""

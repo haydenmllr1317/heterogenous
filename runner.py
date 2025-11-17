@@ -78,10 +78,10 @@ tasks = []
 
 command = ['python3', 'main_yb_yb_EG_sim.py']
 
-for i in range(50):
+for i in range(51):
     args = []
     args.append('-qfc_noise')
-    x = 0.01*(i+1)
+    x = 0.01*(i)
     args.append(str(x))
     tasks.append(command+args)
 
