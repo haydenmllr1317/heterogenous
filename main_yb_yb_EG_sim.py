@@ -20,6 +20,7 @@ from math import inf
 import argparse
 from memory import MemoryArray
 from sequence.constants import MILLISECOND, SECOND
+from apps import HetRequestApp
 
 def main():
     parser = argparse.ArgumentParser()
@@ -46,9 +47,10 @@ def main():
     bsm_operating_wavelength = args.bsm_operating_wavelength
     qfc_eff = args.qfc_efficiency
     qfc_noise = args.qfc_noise
+    meas_fid = 0.99 # hardcoded this, TODO have it read from node or somewhere else later
 
     # network topology json reference and build
-    network_config = 'config/linear.json'
+    network_config = 'config/line_3.json'
     network_topo = YbRouterNetTopo(network_config)
 
     tl = network_topo.get_timeline()
@@ -100,7 +102,7 @@ def main():
 
     # setting node params
     for node in network_topo.get_nodes_by_type(YbRouterNetTopo.QUANTUM_ROUTER):
-        name_to_app[node.name] = RequestApp(node)
+        name_to_app[node.name] = HetRequestApp(node)
         node.meas_fid = 0.99 # TODO include this in the JSON file so it's initialized
         for mem in node.get_components_by_type(MemoryArray)[0].memories:
             mem.efficiency = photon_collection_efficiency
@@ -128,23 +130,21 @@ def main():
 
     for i in range(n):
         if i%2 == 1: # odd
-            node_init.basis = "Z"
-            node_resp.basis = "Z"
+            basis = "Z"
+            basis = "Z"
         else: # even
-            node_init.basis = "X"
-            node_resp.basis = "X"
+            basis = "X"
+            basis = "X"
         beginning = tl.now()
-        starting_attempts = node_init.attempts
-        node_init.last_trap_time = beginning - node_init.time_in_trap # sets last time of trapping to time_in_trap before current time
-        node_resp.last_trap_time = beginning - node_resp.time_in_trap # sets last time of trapping to time_in_trap before current time
-        name_to_app[node_init.name].start(node_resp.name, beginning + delta, beginning + 1*SECOND, 1, 1)
+        starting_attempts = node_init.app.attempts
+        for node in network_topo.get_nodes_by_type(YbRouterNetTopo.QUANTUM_ROUTER):
+            node.app.last_trap_time = beginning - node.app.time_in_trap # sets last time of trapping to time_in_trap before current time
+        name_to_app[node_init.name].start(node_resp.name, beginning + delta, beginning + 1*SECOND, 1, 0.1, basis) # requesting 1 pair with min fid of 0.1
         log.logger.warning("Starting EG attempt at " + str(tl.time) + '.')
         tl.run()
-        if node_init.name > node_resp.name:
-            taken_time = node_init.entanglement_time - beginning
-        else:
-            taken_time = node_resp.entanglement_time - beginning
-        finishing_attempts = node_init.attempts
+
+        taken_time = node_init.app.entanglement_time - beginning
+        finishing_attempts = node_init.app.attempts
         traversed_attempts = finishing_attempts - starting_attempts
         # net_handshake_time = 31_000_000 + 45_000_000*traversed_attempts # 31us is for rule loading, 45us is for protocol handshakes
         # actual_time = (taken_time - net_handshake_time)*(10**-12)
@@ -153,13 +153,13 @@ def main():
         log.logger.warning(f'Entanglement num {i+1} took {traversed_attempts} attempts.')
         total_time += actual_time
 
-    fid = node_resp.get_fidelity()
+    fid = node_init.app.get_fidelity(meas_fid)
 
     # logging
     log.logger.warning(f'QFC noise:{qfc_noise}')
     log.logger.warning(f'After {n} entanglement attempts, calculated fidelity ={fid}')
     log.logger.warning(f'Average ent time is {total_time/n}.')
-    log.logger.warning(f'{n} entanglement pairs were generated after {node_init.attempts} attempts.')
+    log.logger.warning(f'{n} entanglement pairs were generated after {node_init.app.attempts} attempts.')
 
     # print(bsm_node.conversion_counter)
     # print(bsm_node.qfc_noise_counter)

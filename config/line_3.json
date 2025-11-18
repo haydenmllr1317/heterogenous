@@ -141,6 +141,5 @@
             "delay": 1000000000
         }
     ],
-    "stop_time": 10000000000000,
     "formalism": "ket_vector"
 }

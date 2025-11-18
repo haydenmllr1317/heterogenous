@@ -185,15 +185,6 @@ class HetQR(Node):
         self.map_to_middle_node = {}
         self.app = None
 
-        self.attempts = 0 # count of entanglemend attempts
-        self.basis = None
-        self.meas_results = {"X_11": 0, "X_22": 0, "X_33": 0, "X_44": 0, "Z_11": 0, "Z_22": 0, "Z_33": 0, "Z_44": 0}
-        self.entanglement_time = None
-        self.last_trap_time = 0
-        self.need_to_retrap = False
-        self.time_in_trap = 0
-        self.ll = 0
-
     def receive_message(self, src: str, msg: "Message") -> None:
         """Determine what to do when a message is received, based on the msg.receiver.
 
@@ -319,53 +310,3 @@ class HetQR(Node):
 
         if self.app:
             self.app.get_other_reservation(reservation)
-
-    def save_measurement(self, psi_sign, measurement):
-        # psi_sign is 1 for psi+ and -1 for psi-
-        # measurement is length 2 list where each element is 0 (down) or 1 (up)
-
-        # for PSI- we want to flip the sign of X_same and X_diff in our Fidelity formula
-        # to do that, I am just flipping X_same and X_diff right here as they have opposite signs in the formula
-        if psi_sign == -1 and self.basis == "X":
-            if measurement[0] == 0:
-                measurement[0] = 1
-            elif measurement[0] == 1:
-                measurement[0] = 0
-            else:
-                raise ValueError(f'Measurement result should be a bit, not {measurement[0]}')
-
-        if measurement[0] == measurement[1] == 0: # \rho_11 in either basis
-            self.meas_results[self.basis + '_11'] += 1
-        elif measurement[0] == measurement[1] == 1: # \rho_44 in either basis
-            self.meas_results[self.basis + '_44'] += 1
-        elif (measurement[0] == 0) and (measurement[1] == 1): # \rho_22 in either basis
-            self.meas_results[self.basis + '_22'] += 1
-        elif (measurement[0] == 1) and (measurement[1] == 0): # \rho_33 in either basis
-            self.meas_results[self.basis + '_33'] += 1
-        else:
-            raise ValueError(f'Measurement values should both be bits, not {measurement}.')
-
-        self.entanglement_time = self.timeline.now()
-
-    def get_fidelity(self):
-        # fidelity calculation derived from:
-        # https://static-content.springer.com/esm/art%3A10.1038%2Fnature12016/MediaObjects/41586_2013_BFnature12016_MOESM10_ESM.pdf
-        # which is in supplementary information of this paper:
-        # https://www.nature.com/articles/nature12016#Sec2
-
-        # told measurements in X and Z bases respectively
-        X_trials = sum(self.meas_results[f'X_{i}{i}'] for i in range(1,5))
-        Z_trials = sum(self.meas_results[f'Z_{i}{i}'] for i in range(1,5))
-
-        rhoX_diff = (self.meas_results[f'X_22']+self.meas_results[f'X_33'])/X_trials
-        rhoX_same = (self.meas_results[f'X_11']+self.meas_results[f'X_44'])/X_trials
-        rhoZ_diff = (self.meas_results[f'Z_22']+self.meas_results[f'Z_33'])/Z_trials # rho_22 + rho_33
-        rhoZ_prod_same = (self.meas_results[f'Z_11']/Z_trials)*(self.meas_results[f'Z_44']/Z_trials) # rho_11*rho_44
-
-        print(rhoX_diff)
-        print(rhoX_same)
-        print(rhoZ_diff)
-        print(rhoZ_prod_same)
-
-        f = self.meas_fid * (rhoZ_diff + rhoX_same - rhoX_diff - 2*sqrt(rhoZ_prod_same))/2
-        return f

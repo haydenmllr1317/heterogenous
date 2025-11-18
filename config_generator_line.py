@@ -24,7 +24,7 @@ from sequence.topology.topology import Topology
 from sequence.topology.router_net_topo import RouterNetTopo
 from sequence.constants import MILLISECOND
 
-# example: python3 config_generator_line.py 5 10 1 0.0 1 -d config -o line_5.json -s 10 -gf 0.99 -mf 0.99
+# example: python3 config_generator_line.py 5 10 1 0.0 1 -d config -o line_5.json -gf 0.99 -mf 0.99
 
 parser = argparse.ArgumentParser()
 parser.add_argument('linear_size', type=int, help='number of network nodes')
@@ -92,7 +92,8 @@ cchannels += router_cchannels
 output_dict[Topology.ALL_C_CHANNEL] = cchannels
 
 # write other config options to output dictionary
-final_config(output_dict, args)
+# final_config(output_dict, args)
+output_dict[Topology.FORMALISM] = args.formalism
 
 # write final json
 path = os.path.join(args.directory, args.output)

@@ -10,6 +10,7 @@ from math import inf
 from typing import Any, List, TYPE_CHECKING, Dict, Callable, Union
 from numpy import exp, array
 from scipy import stats
+import numpy as np
 
 if TYPE_CHECKING:
     from sequence.entanglement_management.entanglement_protocol import EntanglementProtocol
@@ -200,7 +201,10 @@ class Yb(Memory):
 
         self.original_memory_efficiency = self.efficiency
 
+        self.counter = 0
+
         self.retrap_time = 500_000_000_000
+        self.psi_sign = None # 1 for psi+, -1 for psi-
 
         self.initialize_time = None
         self.cool_time = None
@@ -261,13 +265,16 @@ class Yb(Memory):
         # late_decay_prob = e**(-self.bin_width/self.state_lifetime) # probability photon not released after self.bin_width
         # photon.add_loss(loss=late_decay_prob)
 
+        if self.timeline.quantum_manager.states[self.qstate_key].state[0] != np.complex128(0.7071067811865476+0j):
+            raise ValueError('Unprepared state is getting to QFC.')
+
         self._receivers[0].get(photon, dst=dst)
         self.excited_photon = photon
 
     
     def initialize_cool_prep(self) -> int:
-        if self.owner.need_to_retrap:
-            self.owner.need_to_retrap = False
+        if self.owner.app.need_to_retrap:
+            self.owner.app.need_to_retrap = False
             added_delay = self.retrap_time
             if self.wavelength == 1389:
                 self.atom_state = Yb1389States.P0
@@ -292,6 +299,8 @@ class Yb(Memory):
         if self.efficiency != 0:
             self.update_state(self._plus_state)
             log.logger.info('Atom ' + str(self.name) + ' succesfully prepared in |+>.')
+        else:
+            raise ValueError('Efficiency shouldnt be zero in current trials.')
 
         total_time = self.initialize_time + self.cool_time + self.state_prep_time + added_delay
         return total_time
@@ -324,13 +333,13 @@ class Yb(Memory):
         else:
             raise ValueError('Wavelength ' + str(self.wavelength) + ' is not supported for ' + self.name + '.')
         
-    def measure(self) -> float:
+    def measure(self, other_qkey) -> float:
         # ideally this process is supressing the measured qubits state and forcing the key to point towards
         # the others'
 
-        key0 = self.qstate_key
-        key1 = self.timeline.get_entity_by_name(self.entangled_memory['node_id'] + '.MemoryArray[0]').qstate_key
-        keys = [key0,key1]
+        key = self.qstate_key
+        # key1 = self.timeline.get_entity_by_name(self.entangled_memory['node_id'] + '.MemoryArray[0]').qstate_key
+        keys = [key, other_qkey]
 
         # print(self.timeline.quantum_manager.states[0].state)
         # if self.timeline.quantum_manager.states[0].state != self.timeline.quantum_manager.states[1].state:
@@ -344,12 +353,12 @@ class Yb(Memory):
                 # qm.set([k], [1, 0])
 
         
-        if self.owner.basis == "X":
+        if self.owner.app.basis == "X":
             qm.run_circuit(_H_circuit, keys).keys()
 
         meas = qm.run_circuit(_meas_circuit, keys, self.get_generator().random())
 
-        result = [meas[key0], meas[key1]]
+        result = [meas[key], meas[other_qkey]]
         # for ideal fidelity we expect:
         #   psi+:
         #       1,Z
@@ -358,7 +367,6 @@ class Yb(Memory):
         #       1,Z
         #       1,X
 
-        # print(result, self.owner.basis)
         return result
     
     def set_wavelength(self, wavelength: int):

@@ -116,7 +116,7 @@ class YbEGA(EntanglementGenerationA):
 
         # memory internal info
         self.ent_round = 0  # keep track of current stage of protocol
-        self.psi_sign = None # 1 for psi^+ and -1 for psi^-
+        # self.psi_sign = None # 1 for psi^+ and -1 for psi^-
         self.last_res = [0,-1]  # keep track of bsm measurements to distinguish Psi+ and Psi-
 
         self.scheduled_events = []
@@ -179,7 +179,7 @@ class YbEGA(EntanglementGenerationA):
             Will send message through attached node.
         """
 
-        self.owner.attempts += 1
+        self.owner.app.attempts += 1
 
         log.logger.info(f"{self.name} protocol start with partner {self.remote_protocol_name}")
 
@@ -197,14 +197,6 @@ class YbEGA(EntanglementGenerationA):
             frequency = self.memory.frequency
             message = HetEntanglementGenerationMessage(GenerationMsgType.NEGOTIATE, self.remote_protocol_name, YbEGA,
                                                     qc_delay=self.qc_delay, frequency=frequency)
-            self.memory # TODO what does this do??
-            # if self.owner.attempts == 1:
-            #     send = Process(self.owner, 'send_message', [self.remote_node_name, message])
-            #     send_event = Event(self.owner.timeline.now(), send)
-            #     self.owner.timeline.schedule(send_event)
-            #     self.scheduled_events.append(send_event)
-            # else:
-            #     # send NEGOTIATE message
             self.owner.send_message(self.remote_node_name, message)
             
     def _reset_params(self):
@@ -247,21 +239,21 @@ class YbEGA(EntanglementGenerationA):
             # psi parity (detector nums)
             # signal or not
 
-            if len(self.late_click_types) == 2:
-                self.owner.ll += 1
+            # if len(self.late_click_types) == 2:
+            #     self.owner.ll += 1
 
             if (len(self.early_click_types) == 1) and (len(self.late_click_types) == 1):
                 qm = self.owner.timeline.quantum_manager
 
-                other_key = self.owner.timeline.get_entity_by_name(self.remote_node_name).get_components_by_type("MemoryArray")[0].memories[0].qstate_key
+                other_key = self.owner.timeline.get_entity_by_name(self.remote_memo_id).qstate_key # .get_components_by_type("MemoryArray")[0].memories[0].qstate_key
 
                 if self.early_detectors[0] == self.late_detectors[0]: # psi+
-                    self.psi_sign = 1
+                    self.memory.psi_sign = 1
                 else: # psi-
-                    self.psi_sign = -1
+                    self.memory.psi_sign = -1
 
                 if (self.early_click_types[0]==1) and (self.late_click_types[0]==1): # both signal photons
-                    if self.psi_sign == 1: # psi+
+                    if self.memory.psi_sign == 1: # psi+
                         _set_state_with_fidelity([self.memory.qstate_key, other_key], self._psi_plus, 1.0, self.owner.get_generator(), qm) # NOTE hardcoded fidelity to 1.0
                     else: # psi-
                         _set_state_with_fidelity([self.memory.qstate_key, other_key], self._psi_minus, 1.0, self.owner.get_generator(), qm) # NOTE hardcoded fidelity to 1.0
@@ -361,16 +353,16 @@ class YbEGA(EntanglementGenerationA):
             # get expected arrival time of an early photon
             emit_delay = self.memory.initialize_time + self.memory.cool_time + self.memory.state_prep_time + self.memory.excite_pulse_time
 
-            time_in_trap = self.owner.timeline.now() - self.owner.last_trap_time
+            time_in_trap = self.owner.timeline.now() - self.owner.app.last_trap_time
 
-            if (self.owner.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or (self.memory.wavelength == 1389 and (self.owner.attempts % self.memory.retrap_num) == 1):
-                self.owner.need_to_retrap = True
+            if (self.owner.app.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or (self.memory.wavelength == 1389 and (self.owner.app.attempts % self.memory.retrap_num) == 1):
+                self.owner.app.need_to_retrap = True
                 added_delay = self.memory.retrap_time
                 emit_delay += added_delay
                 for event in self.owner.timeline.events:
                     if event.process.activation in ['lose_atom']:
                         self.owner.timeline.remove_event(event)
-                self.owner.last_trap_time = self.owner.timeline.now()
+                self.owner.app.last_trap_time = self.owner.timeline.now()
 
                 assert self.memory.atom_lifetime > 0, f"Attempting to schedule atom loss for {self.memory.name} with 0 atom lifetime."
                 time_to_next = int(self.owner.get_generator().exponential(self.memory.atom_lifetime) * 1e12)
@@ -414,14 +406,14 @@ class YbEGA(EntanglementGenerationA):
             # configure params
             emit_delay = self.memory.initialize_time + self.memory.cool_time + self.memory.state_prep_time + self.memory.excite_pulse_time
 
-            time_in_trap = self.owner.timeline.now() - self.owner.last_trap_time
+            time_in_trap = self.owner.timeline.now() - self.owner.app.last_trap_time
 
-            if (self.owner.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or ((self.owner.attempts % self.memory.retrap_num) == 1 and self.memory.wavelength == 1389):
-                self.owner.need_to_retrap = True
+            if (self.owner.app.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or ((self.owner.app.attempts % self.memory.retrap_num) == 1 and self.memory.wavelength == 1389):
+                self.owner.app.need_to_retrap = True
                 added_delay = self.memory.retrap_time
                 emit_delay += added_delay
 
-                self.owner.last_trap_time = self.owner.timeline.now()
+                self.owner.app.last_trap_time = self.owner.timeline.now()
                 
                 assert self.memory.atom_lifetime > 0, f"Attempting to schedule atom loss for {self.memory.name} with 0 atom lifetime."
                 time_to_next = int(self.owner.get_generator().exponential(self.memory.atom_lifetime) * 1e12)
@@ -522,30 +514,31 @@ class YbEGA(EntanglementGenerationA):
         self.memory.entangled_memory["memo_id"] = self.remote_memo_id
         self.memory.fidelity = self.memory.raw_fidelity
 
-        self.update_resource_manager(self.memory, MemoryInfo.ENTANGLED)
-
         for event in self.owner.timeline.events:
             if event.process.activation in ['add_dark_count', 'record_detection', 'schedule_atom_loss', 'lose_atom']:
                 self.owner.timeline.remove_event(event)
 
-        time_to_measurement_results = self.owner.timeline.now() + self.memory.readout_time # current time + time it takes to measure
-        if self.primary:
-            result = self.memory.measure()
-            process = Process(self.owner, "save_measurement", [self.psi_sign, result])
-            if self.owner.basis == "X":
-                time_to_measurement_results += self.memory.raman_half_pi_pulse_time
-            event = Event(time_to_measurement_results, process)
-            self.owner.timeline.schedule(event)
-        
-        self.owner.time_in_trap = time_to_measurement_results - self.owner.last_trap_time
+        self.update_resource_manager(self.memory, MemoryInfo.ENTANGLED)
+        '''
 
+        time_to_measurement_results = self.owner.timeline.now() + self.memory.readout_time # current time + time it takes to measure
+        if self.owner.app.basis == "X":
+            time_to_measurement_results += self.memory.raman_half_pi_pulse_time
+
+        self.owner.app.time_in_trap = time_to_measurement_results - self.owner.app.last_trap_time
+
+        process = Process(self, 'update_resource_manager', [self.memory, MemoryInfo.ENTANGLED])
+        event = Event(time_to_measurement_results, process)
+        self.owner.timeline.schedule(event)
+        '''
 
     def _entanglement_fail(self):
         for event in self.scheduled_events:
             self.owner.timeline.remove_event(event)
         log.logger.info(self.owner.name + " failed entanglement of memory {}".format(self.memory))
-        
         self.update_resource_manager(self.memory, MemoryInfo.RAW)
+
+
 class YbEGB(EntanglementGenerationB):
     """Entanglement generation protocol for BSM node.
 
