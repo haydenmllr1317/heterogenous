@@ -42,10 +42,8 @@ def eg_rule_action1(memories_info: List["MemoryInfo"], args: Dict[str, Any]) -> 
     path = args["path"]
     index = args["index"]
     memo_type = args["memo_type"]
-    if memo_type == "Yb":
-        function_name = 'YbEGA'
-        protocol = globals()[function_name](None, "EGTB." + memory.name, mid, path[index-1], memory, memo_type)
-        # protocol = EntanglementGenerationTimeBin{memory.wavelength}
+    if memo_type == "Yb": # TODO change to enable both Yb and uW
+        protocol = YbEGA(None, "EGTB." + memory.name, mid, path[index-1], memory, memo_type)
     else:
         protocol = EntanglementGenerationA(None, "EGA." + memory.name, mid, path[index - 1], memory)
     return protocol, [None], [None], [None]
@@ -61,13 +59,10 @@ def eg_rule_action2(memories_info: List["MemoryInfo"], args: Arguments) -> Tuple
     memory = memories[0]
     memo_type = args["memo_type"]
     if memo_type == "Yb":
-        function_name = f'YbEGA'
-        protocol = globals()[function_name](None, "EGTB" + "." + memory.name, mid, path[index-1], memory, memo_type)
-        protocol_type = YbEGA
+        protocol = YbEGA(None, "EGTB" + "." + memory.name, mid, path[index+1], memory, memo_type)
     else:
         protocol = EntanglementGenerationA(None, "EGA." + memory.name, mid, path[index + 1], memory)
-        protocol_type = EntanglementGenerationA
-    req_args = {"name": args["name"], "reservation": args["reservation"], "protocol_type": protocol_type}
+    req_args = {"name": args["name"], "reservation": args["reservation"]}
     return protocol, [path[index + 1]], [eg_req_func], [req_args]
 
 
@@ -82,9 +77,8 @@ def eg_req_func(protocols: List["EntanglementProtocol"], args: Arguments) -> Ent
     """
     name = args["name"]
     reservation = args["reservation"]
-    generation_protocol_type = args["protocol_type"]
     for protocol in protocols:
-        if (isinstance(protocol, generation_protocol_type)
+        if (isinstance(protocol, EntanglementGenerationA)
                 and protocol.remote_node_name == name
                 and protocol.rule.get_reservation() == reservation):
             return protocol
@@ -325,7 +319,7 @@ class ResourceReservationProtocol(StackProtocol):
         self.memo_arr = owner.components[memory_array_name]
         self.timecards = [MemoryTimeCard(i) for i in range(len(self.memo_arr))]
         self.es_succ_prob = 1
-        self.es_degradation = 0.95
+        self.es_degradation = 0.98
         self.accepted_reservations = []
 
     def push(self, responder: str, start_time: int, end_time: int, memory_size: int, target_fidelity: float,
@@ -499,7 +493,6 @@ class ResourceReservationProtocol(StackProtocol):
             rules.append(rule)
 
         '''
-
         # 2. create rules for entanglement purification
         if index > 0:
             condition_args = {"memory_indices": memory_indices[:reservation.memory_size], "reservation": reservation}
@@ -516,6 +509,8 @@ class ResourceReservationProtocol(StackProtocol):
             action_args = {}
             rule = Rule(10, ep_rule_action2, ep_rule_condition2, action_args, condition_args)
             rules.append(rule)
+
+        '''
 
         # 3. create rules for entanglement swapping
         if index == 0:
@@ -548,7 +543,6 @@ class ResourceReservationProtocol(StackProtocol):
             rule = Rule(10, es_rule_actionB, es_rule_conditionB2, action_args, condition_args)
             rules.append(rule)
 
-        '''
 
         for rule in rules:
             rule.set_reservation(reservation)

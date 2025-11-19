@@ -98,6 +98,7 @@ class YbEGA(EntanglementGenerationA):
         """
 
         super().__init__(owner, name, middle, other, memory)
+        self.protocol_type = "Yb_EGA"
         self.middle: str = middle
         self.remote_node_name: str = other
         self.remote_protocol_name: str = None
@@ -180,6 +181,7 @@ class YbEGA(EntanglementGenerationA):
         """
 
         self.owner.app.attempts += 1
+        self.memory.attempts += 1
 
         log.logger.info(f"{self.name} protocol start with partner {self.remote_protocol_name}")
 
@@ -355,8 +357,8 @@ class YbEGA(EntanglementGenerationA):
 
             time_in_trap = self.owner.timeline.now() - self.owner.app.last_trap_time
 
-            if (self.owner.app.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or (self.memory.wavelength == 1389 and (self.owner.app.attempts % self.memory.retrap_num) == 1):
-                self.owner.app.need_to_retrap = True
+            if (self.memory.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or (self.memory.wavelength == 1389 and (self.memory.attempts % self.memory.retrap_num) == 1):
+                self.memory.need_to_retrap = True
                 added_delay = self.memory.retrap_time
                 emit_delay += added_delay
                 for event in self.owner.timeline.events:
@@ -408,8 +410,8 @@ class YbEGA(EntanglementGenerationA):
 
             time_in_trap = self.owner.timeline.now() - self.owner.app.last_trap_time
 
-            if (self.owner.app.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or ((self.owner.app.attempts % self.memory.retrap_num) == 1 and self.memory.wavelength == 1389):
-                self.owner.app.need_to_retrap = True
+            if (self.memory.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or ((self.memory.attempts % self.memory.retrap_num) == 1 and self.memory.wavelength == 1389):
+                self.memory.need_to_retrap = True
                 added_delay = self.memory.retrap_time
                 emit_delay += added_delay
 

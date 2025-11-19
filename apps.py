@@ -14,7 +14,6 @@ class HetRequestApp(RequestApp):
         self.attempts = 0
         self.last_trap_time = 0
         self.time_in_trap = 0
-        self.neet_to_retrap = False
         super().__init__(node)
 
     def start(self, responder: str, start_t: int, end_t: int, memo_size: int, fidelity: float, basis: str):
@@ -41,7 +40,7 @@ class HetRequestApp(RequestApp):
         other_memory = self.node.timeline.get_entity_by_name(info.remote_memo)
         
         time_to_measurement_results = self.node.timeline.now() + max(info.memory.readout_time, other_memory.readout_time) # current time + time it takes to measure
-        
+
         if self.basis == "X":
             time_to_measurement_results +=  info.memory.raman_half_pi_pulse_time # TODO change for heterogenous network
 

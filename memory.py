@@ -205,6 +205,8 @@ class Yb(Memory):
 
         self.retrap_time = 500_000_000_000
         self.psi_sign = None # 1 for psi+, -1 for psi-
+        self.attempts = 0
+        self.need_to_retrap = False
 
         self.initialize_time = None
         self.cool_time = None
@@ -273,8 +275,8 @@ class Yb(Memory):
 
     
     def initialize_cool_prep(self) -> int:
-        if self.owner.app.need_to_retrap:
-            self.owner.app.need_to_retrap = False
+        if self.need_to_retrap:
+            self.need_to_retrap = False
             added_delay = self.retrap_time
             if self.wavelength == 1389:
                 self.atom_state = Yb1389States.P0

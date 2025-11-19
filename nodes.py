@@ -84,9 +84,11 @@ class HetBSMNode(Node):
         else:
             raise ValueError(f'Encoding type {self.encoding_type} not supported')
         
+        first_qfc_name_index = other_nodes[0].find('_')
+        second_qfc_name_index = other_nodes[1].find('_')
         # add QFCs
-        qfc0 = QFC(name+'.QFC0', self.timeline)
-        qfc1 = QFC(name+'.QFC1', self.timeline)
+        qfc0 = QFC(name+'.QFC'+other_nodes[0][first_qfc_name_index+1:], self.timeline)
+        qfc1 = QFC(name+'.QFC'+other_nodes[1][second_qfc_name_index+1:], self.timeline)
         qfc0.add_receiver(bsm)
         qfc1.add_receiver(bsm)
         self.add_component(qfc0)
@@ -109,7 +111,8 @@ class HetBSMNode(Node):
     # overwrote this method so that photons go straight to correct QFCs
     def receive_qubit(self, src: str, photon) -> None:
         index = src.find('_')
-        self.components[self.name+'.QFC'+src[index+1:]].get(photon)
+        qfc_name = self.name+'.QFC'+src[index+1:]
+        self.components[qfc_name].get(photon)
     
     # TODO figure out if this is duplicitous and an unecesssary change from the Node version
     def receive_message(self, src: str, msg: "Message") -> None:
