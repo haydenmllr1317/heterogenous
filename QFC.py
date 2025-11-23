@@ -75,8 +75,8 @@ class QFC(Entity):
 
         photon.add_loss(1-self.efficiency) # add QFC loss
 
-        if self.timeline.quantum_manager.states[photon.quantum_state].state[0] != np.complex128(0.7071067811865476+0j):
-            raise ValueError('Unprepared state is getting to QFC.')
+        # if self.timeline.quantum_manager.states[photon.quantum_state].state[0] != np.complex128(0.7071067811865476+0j):
+        #     raise ValueError('Unprepared state is getting to QFC.')
 
         self.owner.conversion_counter += 1
         if self.get_generator().random() < self.noise: # noise photon added

@@ -29,14 +29,14 @@
             "source": "router_0",
             "destination": "BSM_0_1",
             "distance": 1000.0,
-            "attenuation": 0.0
+            "attenuation": 0.0003
         },
         {
             "name": "qchannel_1",
             "source": "router_1",
             "destination": "BSM_0_1",
             "distance": 1000.0,
-            "attenuation": 0.0
+            "attenuation": 0.0003
         }
     ],
     "cchannels": [

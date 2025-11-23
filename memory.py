@@ -170,20 +170,20 @@ class MemoryArray(Entity):
 
 
 class Yb1389States(Enum):
-    S0 = float(-1) # for 1S0 state
+    S0 = 0.354 # for 1S0 state                              parameter 19
 
     # the values of these three are their branching ratios
     # NOTE CHANGING THESE
-    # P0 = 0.637 # for 3P0 state
+    P0 = 0.637 # for 3P0 state                              parameter 20
     # P1 = 0.354 # for 3P1 state
-    # P2 = 0.009 # for 3P2 state
+    # P2 =  # for 3P2 state
 
-    P0 = 1.0 # for 3P0 state
-    P1 = 0.0 # for 3P1 state 
-    P2 = 0.0 # for 3P2 state
+    # P0 = 1.0 # for 3P0 state
+    # P1 = 0.0 # for 3P1 state 
+    # P2 = 0.0 # for 3P2 state
     
     # arbitrary value now
-    LOST = float(-2) # for atom fallen out of trap
+    LOST = 0.009 # for atom fallen out of trap              parameter 21
 
 class Yb556States(Enum):
     S0 = auto() # for 1S0 state
@@ -199,33 +199,40 @@ class Yb(Memory):
         
         super().__init__(name, timeline, fidelity, frequency, efficiency, coherence_time, wavelength, decoherence_errors, cutoff_ratio)
 
+        # wavelength, coherance, efficiency: 3
+
         self.original_memory_efficiency = self.efficiency
 
         self.counter = 0
 
-        self.retrap_time = 500_000_000_000
+        self.retrap_time = 500_000_000_000 #4 step1
         self.psi_sign = None # 1 for psi+, -1 for psi-
         self.attempts = 0
         self.need_to_retrap = False
 
-        self.initialize_time = None
-        self.cool_time = None
-        self.clock_pulse_time = None
-        self.raman_half_pi_pulse_time = None
+        self.initialize_time = None          #5 step2
+        self.cool_time = None                #6 step3
+        self.clock_pulse_time = None         #7 step4(a)
+        self.raman_half_pi_pulse_time = None #8 step4(b)
         self.state_prep_time = None
-        self.excite_pulse_time = None
-        self.phase_flip_time = None
+        self.excite_pulse_time = None        #9 step5(a)
+        self.bin_width = None                #10 step5(b) detection window
         self.bin_gap = None
-        self.atom_state = None
-        self.retrap_num = None
-        self.readout_time = None
-        self.state_lifetime = None
-        self.atom_lifetime = None
-        self.lifetime_reload_time = None
-        self.bin_width = None # detection window
+        self.phase_flip_time = None          #11 step5(c)
+        self.bin_separation = None           #12 step5(d)
+    
+        self.atom_state = None               #13
+        self.retrap_num = None               #14
+        self.readout_time = None             #15 step6
+        self.state_lifetime = None           #16
+        self.atom_lifetime = None            #17
+        self.lifetime_reload_time = None     #18
+        
+        #################################    #19-21 in enum
+        #################################    #22 is readout fidelity (set to 99.5)
+        #################################    #23 for 2-qubit gate fidelity
 
-        self.bin_separation = None
-
+        # TODO what is 2-qubit gate fidelity? (0.997 is Infleqtion's result, 0.995 might be good default)
 
 
     def excite(self, encoding_type, dst="") -> None:
@@ -263,12 +270,11 @@ class Yb(Memory):
         photon.add_loss(1 - self.efficiency)
 
         # need to add loss for size of time-bin (atom may not have had time to decay)
-        # NOTE COMMENTING THIS OUT FOR bug CHECKING
-        # late_decay_prob = e**(-self.bin_width/self.state_lifetime) # probability photon not released after self.bin_width
-        # photon.add_loss(loss=late_decay_prob)
+        late_decay_prob = e**(-self.bin_width/self.state_lifetime) # probability photon not released after self.bin_width
+        photon.add_loss(loss=late_decay_prob)
 
-        if self.timeline.quantum_manager.states[self.qstate_key].state[0] != np.complex128(0.7071067811865476+0j):
-            raise ValueError('Unprepared state is getting to QFC.')
+        # if self.timeline.quantum_manager.states[self.qstate_key].state[0] != np.complex128(0.7071067811865476+0j):
+        #     raise ValueError('Unprepared state is getting to QFC.')
 
         self._receivers[0].get(photon, dst=dst)
         self.excited_photon = photon
@@ -288,21 +294,20 @@ class Yb(Memory):
             added_delay = 0
 
         # 3% loss due to depumping from 3P0 to 1S0
-        # NOTE COMMENTED THIS OUT FOR TRIALS
-        # if self.atom_state != Yb1389States.LOST and self.wavelength == 1389:
-        #     if self.get_generator().random() >= .975:
-        #         self.atom_state = Yb1389States.LOST
-        #         self.efficiency = 0
-        #         log.logger.info("Atom " + str(self.name) + " lost in depumping.")
-        #     else:
-        #         # if not lost, atoms should already be in correct state here
-        #         if self.wavelength == 1389:
-        #             self.atom_state = Yb1389States.P0
+        if self.atom_state != Yb1389States.LOST and self.wavelength == 1389:
+            if self.get_generator().random() >= .975:
+                self.atom_state = Yb1389States.LOST
+                self.efficiency = 0
+                log.logger.info("Atom " + str(self.name) + " lost in depumping.")
+            else:
+                # if not lost, atoms should already be in correct state here
+                if self.wavelength == 1389:
+                    self.atom_state = Yb1389States.P0
         if self.efficiency != 0:
             self.update_state(self._plus_state)
             log.logger.info('Atom ' + str(self.name) + ' succesfully prepared in |+>.')
-        else:
-            raise ValueError('Efficiency shouldnt be zero in current trials.')
+        # else:
+        #     raise ValueError('Efficiency shouldnt be zero in current trials.')
 
         total_time = self.initialize_time + self.cool_time + self.state_prep_time + added_delay
         return total_time
@@ -315,7 +320,7 @@ class Yb(Memory):
             elif self.atom_state == Yb1389States.P0:
                 if self.get_generator().random() <= Yb1389States.P0.value:
                     return 1389
-                elif self.get_generator().random() <= (Yb1389States.P0.value + Yb1389States.P1.value):
+                elif self.get_generator().random() <= (Yb1389States.P0.value + Yb1389States.S0.value):
                     self.atom_state = Yb1389States.S0
                     return 999
                 else:
@@ -353,6 +358,8 @@ class Yb(Memory):
             if len(qm.states[k].state) != 4: # if not entangled
                 log.logger.warning('Incorrectly entangled state.')
                 # qm.set([k], [1, 0])
+            else:
+                print(qm.states[k].state)
 
         
         if self.owner.app.basis == "X":
@@ -437,7 +444,7 @@ class Transmon(Memory):
         self.t2_coherance = 100000000
         self.photon_collection_efficiency = 1 # uwaves emmited into cavity all get picked up
         self.wavelength = None # unclear what it is for uwave
-        self.measurement_time = 1000000
+        self.measurement_time = 1_2000_000
         self.initialization_time = 5*self.t1_coherance # time to get everything into ground state
         self.prep_time = None # unclear what it is to apply hadamard pulse to ground state
         self.ge_transition_time = 20000 # time to excite from |g> -> |e>

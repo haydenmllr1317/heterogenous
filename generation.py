@@ -259,10 +259,9 @@ class YbEGA(EntanglementGenerationA):
                         _set_state_with_fidelity([self.memory.qstate_key, other_key], self._psi_plus, 1.0, self.owner.get_generator(), qm) # NOTE hardcoded fidelity to 1.0
                     else: # psi-
                         _set_state_with_fidelity([self.memory.qstate_key, other_key], self._psi_minus, 1.0, self.owner.get_generator(), qm) # NOTE hardcoded fidelity to 1.0
+                elif (self.early_click_types[0]==2) or (self.late_click_types[0]==2):
+                    log.logger.warning('False positive entanglement heralded with dark count involved.')
                 else:
-                    # print(self.owner.timeline.get_entity_by_name('BSM_0_1.BSM').measurement)
-                    if (self.early_click_types[0] != 0) and (self.late_click_types[0] != 0):
-                        raise ValueError('Unexpected cause of fake entanglement.')
                     log.logger.warning('False positive entanglement heralded.')
                 # TODO really be conscientious about how we maintaing quantum keys when entanglement is faked
                 # NOTE unsure if this is right, at some point must be thoughtful about how we hold the the states 
@@ -477,7 +476,6 @@ class YbEGA(EntanglementGenerationA):
 
             # early time bin
             if self.early_bin[0] <= time <= self.early_bin[1]:
-                # self.early_triggers.append(time)
                 # if click_type == 1:
                 #     print(time - self.early_bin[0])
                 #     pass
@@ -486,14 +484,10 @@ class YbEGA(EntanglementGenerationA):
                 
             # late time bin
             elif self.late_bin[0] <= time <= self.late_bin[1]:
-                if click_type == 1:
-                    pass
-                # self.late_triggers.append(time)
                 self.late_click_types.append(click_type)
                 self.late_detectors.append(detector_num) 
             else:
-                log.logger.warning('Photon found outside a bin.')
-                print('something funny happeing here')
+                log.logger.info('Photon found outside a bin.')
         else:
             raise Exception("Invalid message {} received by EG on node {}".format(msg_type, self.owner.name))
 
@@ -553,7 +547,7 @@ class YbEGB(EntanglementGenerationB):
         others (List[str]): list of neighboring quantum router nodes
     """
 
-    def __init__(self, owner: "BSMNode", name: str, others: List[str]):
+    def __init__(self, owner: "Node", name: str, others: List[str]):
         """Constructor for entanglement generation B protocol.
 
         Args:

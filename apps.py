@@ -58,22 +58,21 @@ class HetRequestApp(RequestApp):
                 self.memory_counter += 1
                 log.logger.info(f"Successfully generated entanglement. Counter is at {self.memory_counter}.")
                 remote_memory_key = other_memory.qstate_key
-                measurement = info.memory.measure(remote_memory_key) # measurement = [meas0,meas1] for each atom
-                # self.save_measurement(info.memory.psi_sign, measurement)
-                process = Process(self, 'save_measurement', [info.memory.psi_sign, measurement])
+
+                process = Process(self, 'measure_and_save', [info.memory, remote_memory_key])
                 event = Event(time_to_measurement_results, process)
                 self.node.timeline.schedule(event)
-                # process = Process(self.node.resource_manager, 'update', [None, info.memory, "RAW"])
-                # event = Event(time_to_measurement_results, process)
-                # self.node.timeline.schedule(event)
 
-    def save_measurement(self, psi_sign, measurement):
+    def measure_and_save(self, memory, remote_memory_key):
+
+        measurement = memory.measure(remote_memory_key)
+
         # psi_sign is 1 for psi+ and -1 for psi-
         # measurement is length 2 list where each element is 0 (down) or 1 (up)
 
         # for PSI- we want to flip the sign of X_same and X_diff in our Fidelity formula
         # to do that, I am just flipping X_same and X_diff right here as they have opposite signs in the formula
-        if psi_sign == -1 and self.basis == "X":
+        if memory.psi_sign == -1 and self.basis == "X":
             if measurement[0] == 0:
                 measurement[0] = 1
             elif measurement[0] == 1:

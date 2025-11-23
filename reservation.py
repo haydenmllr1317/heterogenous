@@ -19,7 +19,7 @@ from sequence.entanglement_management.generation.generation_base import Entangle
 from generation import YbEGA
 from sequence.entanglement_management.purification.bbpssw_circuit import BBPSSWCircuit
 
-from sequence.entanglement_management.swapping import EntanglementSwappingA, EntanglementSwappingB
+from swapping import EntanglementSwappingA, EntanglementSwappingB
 from sequence.message import Message
 from sequence.protocol import StackProtocol
 from sequence.kernel.event import Event

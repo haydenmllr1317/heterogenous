@@ -8,7 +8,7 @@ NOTE: ADD MORE INFO HERE
 
 '''
 
-#### REMEMBER I CHANGED THE QCHANNEL ATTENUTATION IN JSON
+### MAKE SURE TO KEEP CHANNEL ATTENUTATION IN JSON UPDATED
 ####  ALSO COMMENTED OUT THE ATOM BRANCHING RATIOS, DEPUMPING LOSS, and LATE DECAY PROBABILITY WITHIN MEMORY
 
 from sequence.utils import log
@@ -27,8 +27,8 @@ def main():
     parser.add_argument('-pce', '--photoncollectionefficiency', type=float, default=1.0, help='efficiency of photon collection into fiber')
     parser.add_argument('-wavelength', '--photonwavelength', type=int, default=1389, help='wavelength of emmitted photons')
     # parser.add_argument('-t_retrap', '--time_to_retrap', type=int, default=40, help="Time atom has been in trap at which we want to retrap (in seconds).") 
-    parser.add_argument('-n', '--numtrials', type=int, default=5000, help="number of entangled pairs we generated")
-    parser.add_argument('-dtctor_dc', '--detectordarkcount', type=float, default=0.0, help="Dark count rate, in Hz, for the detector in the BSM.")
+    parser.add_argument('-n', '--numtrials', type=int, default=100, help="number of entangled pairs we generated")
+    parser.add_argument('-dtctor_dc', '--detectordarkcount', type=float, default=11.0, help="Dark count rate, in Hz, for the detector in the BSM.")
     parser.add_argument('-dtctor_eff', '--detectorefficiency', type=float, default=1.0, help="Efficiency for the detector in the BSM.") # default should be 0.85 according to Joaquin
     # parser.add_argument('-dtctor_res', '--detectorresolution', type=int, default=50_000, help='Minimum time difference our SNSPDs can resolve.') NOTE THIS IS NOT WHAT WE WANT, LEAVING CLASS AS IS
     parser.add_argument('-bsm_wvln', '--bsm_operating_wavelength', type=int, default=746, help="Photon wavelength BSM ideally operates at.")
@@ -139,7 +139,7 @@ def main():
         starting_attempts = node_init.app.attempts
         for node in network_topo.get_nodes_by_type(YbRouterNetTopo.QUANTUM_ROUTER):
             node.app.last_trap_time = beginning - node.app.time_in_trap # sets last time of trapping to time_in_trap before current time
-        name_to_app[node_init.name].start(node_resp.name, beginning + delta, beginning + 1*SECOND, 1, 0.1, basis) # requesting 1 pair with min fid of 0.1
+        name_to_app[node_init.name].start(node_resp.name, beginning + delta, beginning + 10*SECOND, 1, 0.1, basis) # requesting 1 pair with min fid of 0.1
         log.logger.warning("Starting EG attempt at " + str(tl.time) + '.')
         tl.run()
 
