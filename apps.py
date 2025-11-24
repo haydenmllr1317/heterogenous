@@ -93,6 +93,11 @@ class HetRequestApp(RequestApp):
 
         self.entanglement_time = self.node.timeline.now()
 
+        # remove detector dark counts so we can finish simulation as we have succesfully heralded entanglement
+        for event in self.node.timeline.events:
+            if event.process.activation in ['add_dark_count', 'record_detection']:
+                self.node.timeline.remove_event(event)
+
 
     def get_fidelity(self, meas_fid):
         # fidelity calculation derived from:

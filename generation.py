@@ -17,7 +17,7 @@ from typing import List, TYPE_CHECKING, Dict, Any
 
 if TYPE_CHECKING:
     from memory import Memory
-    from sequence.components.bsm import SingleAtomBSM
+    from sequence.components.bsm import BSM
     from nodes import Node
 
 from sequence.resource_management.memory_manager import MemoryInfo
@@ -32,139 +32,31 @@ from sequence.entanglement_management.generation import GenerationMsgType
 from math import e, ceil
 from sequence.components.bsm import _set_state_with_fidelity
 from message import HetEntanglementGenerationMessage
+from sequence.constants import BARRET_KOK
 
-
-def valid_trigger_time(trigger_time: int, target_time: int, resolution: int) -> bool:
-    """return True if the trigger time is valid, else return False."""
-    lower = target_time - (resolution // 2)
-    upper = target_time + (resolution // 2)
-    return lower <= trigger_time <= upper
-
-
-
-class YbEGA(EntanglementGenerationA):
-    """Entanglement generation protocol for quantum router.
-
-    The EntanglementGenerationTimeBin protocol should be instantiated on a quantum router node.
-    Instances will communicate with each other (and with the B instance on a BSM node) to generate entanglement.
-
-    Attributes:
-        own (QuantumRouter): node that protocol instance is attached to.
-        name (str): label for protocol instance.
-        middle (str): name of BSM measurement node where emitted photons should be directed.
-        remote_node_name (str): name of distant QuantumRouter node, containing a memory to be entangled with local memory.
-        remote_protocol_name (str): name of protocol on remote node
-        memory (Memory): quantum memory object to attempt entanglement for.
-        remote_memo_id (str): memory index used by corresponding protocol on
-            other node
-        fidelity(float): fidelity of memory protocol is attached to
-        qc_delay(int): delay in quantum channel between node this protocol
-            is on and the 'middle' node
-        expected_time (int): expected time at which a 'late' photon would be
-            detected
-        ent_round (int): which round of enanglement we are on, as this is single
-            heralded, there are only two rounds - entanglement and correction
-        psi_sign (int): 0 if we have psi+, 1 if we have psi-, -1 if nothing
-        last_res (List[int]): two element list, first element is the last time
-            of a detector occurance, and the second is which detector was hit
-        scheduled_events (List[Event]): list of future scheduled Event objects
-        primary (bool): True if is unique primary node that initiates
-            negotiations, False else
-        _qstate_key (int): key from quantum manager for memory qubit state
-        encoding_type (str): type of encoding for photons, set to "time_bin"
-        photon_bin_separation (int): temporal separation between early and late
-            photons, as specified in 'encoding' module under time_bin
-    """
-
-    _plus_state = [sqrt(1/2), sqrt(1/2)]
-    _flip_circuit = Circuit(1)
-    _flip_circuit.x(0)
-    _z_circuit = Circuit(1)
-    _z_circuit.z(0)
+class HetEGA(EntanglementGenerationA):
 
     # Desired Bell States
     _psi_plus = [complex(0), complex(sqrt(1 / 2)), complex(sqrt(1 / 2)), complex(0)]
     _psi_minus = [complex(0), complex(sqrt(1 / 2)), -complex(sqrt(1 / 2)), complex(0)]
 
-    def __init__(self, owner: "Node", name: str, middle: str, other: str, memory: "Memory", encoding, loop: str = False, retrap_num: int = 128):
-        """Constructor for entanglement generation A class.
-
-        Args:
-            owner (Node): node to attach protocol to.
-            name (str): name of protocol instance.
-            middle (str): name of middle measurement node.
-            other (str): name of other node.
-            memory (Memory): memory to entangle.
-        """
+    def __init__(self, owner: "Node", name: str, middle: str, other: str, memory: "Memory"):
 
         super().__init__(owner, name, middle, other, memory)
-        self.protocol_type = "Yb_EGA"
-        self.middle: str = middle
-        self.remote_node_name: str = other
-        self.remote_protocol_name: str = None
+        # self.protocol_type = "Het_EGA" # it's just going to defaul to BARRET_KOK which I think is fine
 
-        # memory info
-        self.memory: Memory = memory
-        self.memories: List[Memory] = [memory]
-        self.remote_memo_id: str = ""  # memory index used by corresponding protocol on other node
-        
-        # self.original_memory_efficiency = self.owner.original_mem_eff
-
-        # network and hardware info
-        self.fidelity: float = memory.raw_fidelity
-        self.qc_delay: int = 0
-        self.expected_time: int = -1   # expected time for late photon to arrive at detector
-
-        # memory internal info
-        self.ent_round = 0  # keep track of current stage of protocol
-        # self.psi_sign = None # 1 for psi^+ and -1 for psi^-
-        self.last_res = [0,-1]  # keep track of bsm measurements to distinguish Psi+ and Psi-
-
-        self.scheduled_events = []
-
-        # misc
-        self.primary: bool = False  # one end node is the "primary" that initiates negotiation
-
-        self.encoding = encoding
-
-        self.early_bin = -1, -1
-        self.late_bin = -1, -1
+        self.early_bin = [-1, -1]
+        self.late_bin = [-1, -1]
 
         self.detector_resolution = None
         
-        # don't think we need this anymore
-        # self.loop = loop # this is true if we want to continue gunning for entanglement
-
-        # # these lists are all updated in parity
-        # self.trigger_times = [] # list of recent times when BSM clicked
-        # self.signal_values = [] # list of booleans determining whether recent clicks were signals or not
-        # self.photon_keys = [] # list of keys from recent photons that hit detectors (list element is None if detector dark count)
-        # self.detector_hits = [] # list of recent detectors clicked
-
-        #TODO 
-        # make early/late click types into an enum for ease of reading/bug checking
-
-        # these lists are all updated in parity
-        # self.early_triggers = [] # list of times when BSM clicked within early time bin
         self.early_click_types = [] # list of booleans determining whether early clicks were signals or not
         self.early_detectors = [] # list of detectors clicked in early time bin
 
-        # self.late_triggers = [] # list of times when BSM clicked within late time bin
         self.late_click_types = [] # list of booleans determining whether late clicks were signals or not
         self.late_detectors = [] # list of detectors clicked in late time bin
 
-    def set_others(self, protocol: str, node: str, memories: List[str]) -> None:
-        """Method to set other entanglement protocol instance.
-
-        Args:
-            protocol (str): other protocol name.
-            node (str): other node name.
-            memories (List[str]): the list of memory names used on other node.
-        """
-        assert self.remote_protocol_name is None
-        self.remote_protocol_name = protocol
-        self.remote_memo_id = memories[0]
-        self.primary = self.owner.name > self.remote_node_name
+        self.emit_delay = None
 
     # this is to add detector resolution to our existing bins
     def update_bins(self, detector_resolution):
@@ -172,7 +64,7 @@ class YbEGA(EntanglementGenerationA):
         self.late_bin = (self.late_bin[0] - (detector_resolution//2)), (self.late_bin[1] + (detector_resolution//2))
 
     def start(self) -> None:
-        """Method to start "one round" in the entanglement generation protocol (there are two rounds in Barrett-Kok).
+        """Method to start heterogenous entanglement generation protocol.
 
         Will start negotiations with other protocol (if primary).
 
@@ -180,7 +72,6 @@ class YbEGA(EntanglementGenerationA):
             Will send message through attached node.
         """
 
-        self.owner.app.attempts += 1
         self.memory.attempts += 1
 
         log.logger.info(f"{self.name} protocol start with partner {self.remote_protocol_name}")
@@ -189,16 +80,34 @@ class YbEGA(EntanglementGenerationA):
         if self not in self.owner.protocols:
             return
 
-        # if self.owner.attempts == 1:
-        #     self.memory.efficiency = self.memory.original_memory_efficiency
-
-
         # update memory, and if necessary start negotiations for round
         if self.update_memory() and self.primary:
             self.qc_delay = self.owner.qchannels[self.middle].delay
-            frequency = self.memory.frequency
-            message = HetEntanglementGenerationMessage(GenerationMsgType.NEGOTIATE, self.remote_protocol_name, YbEGA,
-                                                    qc_delay=self.qc_delay, frequency=frequency)
+            # time required by memory between excitation and emission:
+            self.emit_delay = self.memory.initialize_time + self.memory.cool_time + self.memory.state_prep_time + self.memory.excite_pulse_time
+            # how long memory has already been in trap:
+            time_in_trap = self.owner.timeline.now() - self.owner.app.last_trap_time
+            # check if we need to retrap (and do so if necessary):
+            if (self.memory.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or (self.memory.wavelength == 1389 and (self.memory.attempts % self.memory.retrap_num) == 1):
+                self.memory.need_to_retrap = True
+                added_delay = self.memory.retrap_time
+                self.emit_delay += added_delay
+                for event in self.scheduled_events:
+                    if event.process.activation == 'lose_atom':
+                        self.owner.timeline.remove_event(event)
+                self.owner.app.last_trap_time = self.owner.timeline.now()
+
+                # schedule next atom loss event
+                assert self.memory.atom_lifetime > 0, f"Attempting to schedule atom loss for {self.memory.name} with 0 atom lifetime."
+                time_to_next = int(self.owner.get_generator().exponential(self.memory.atom_lifetime) * 1e12) # TODO double check this is correct, this seems wrong
+                time = time_to_next + self.owner.timeline.now()
+                process = Process(self.memory, "lose_atom", [])
+                event = Event(time, process)
+                self.owner.timeline.schedule(event)
+                self.scheduled_events.append(event)
+            
+            message = HetEntanglementGenerationMessage(GenerationMsgType.NEGOTIATE, self.remote_protocol_name, BARRET_KOK,
+                                                    qc_delay=self.qc_delay, emit_delay=self.emit_delay)
             self.owner.send_message(self.remote_node_name, message)
             
     def _reset_params(self):
@@ -211,8 +120,6 @@ class YbEGA(EntanglementGenerationA):
         self.late_click_types = [] # list of booleans determining whether late clicks were signals or not
         self.late_detectors = [] # list of detectors clicked in late time bin
 
-
-        
     def update_memory(self) -> bool:
         """Method to handle necessary memory operations.
 
@@ -225,6 +132,7 @@ class YbEGA(EntanglementGenerationA):
         Side Effects:
             May change state of attached memory.
             May update memory state in the attached node's resource manager.
+            May reset this protocol's parameters
         """
 
         # to avoid start after protocol removed
@@ -237,27 +145,21 @@ class YbEGA(EntanglementGenerationA):
             return True
         
         elif self.ent_round == 2:
-            # three things to consider:
-            # psi parity (detector nums)
-            # signal or not
 
-            # if len(self.late_click_types) == 2:
-            #     self.owner.ll += 1
-
-            if (len(self.early_click_types) == 1) and (len(self.late_click_types) == 1):
+            if (len(self.early_click_types) == 1) and (len(self.late_click_types) == 1): # one early and one late photon
+                
                 qm = self.owner.timeline.quantum_manager
-
-                other_key = self.owner.timeline.get_entity_by_name(self.remote_memo_id).qstate_key # .get_components_by_type("MemoryArray")[0].memories[0].qstate_key
+                other_key = self.owner.timeline.get_entity_by_name(self.remote_memo_id).qstate_key #key of possibly entangled memory
 
                 if self.early_detectors[0] == self.late_detectors[0]: # psi+
                     self.memory.psi_sign = 1
-                else: # psi-
+                else:                                                 # psi-
                     self.memory.psi_sign = -1
 
                 if (self.early_click_types[0]==1) and (self.late_click_types[0]==1): # both signal photons
                     if self.memory.psi_sign == 1: # psi+
                         _set_state_with_fidelity([self.memory.qstate_key, other_key], self._psi_plus, 1.0, self.owner.get_generator(), qm) # NOTE hardcoded fidelity to 1.0
-                    else: # psi-
+                    else:                         # psi-
                         _set_state_with_fidelity([self.memory.qstate_key, other_key], self._psi_minus, 1.0, self.owner.get_generator(), qm) # NOTE hardcoded fidelity to 1.0
                 elif (self.early_click_types[0]==2) or (self.late_click_types[0]==2):
                     log.logger.warning('False positive entanglement heralded with dark count involved.')
@@ -286,38 +188,22 @@ class YbEGA(EntanglementGenerationA):
 
 
     def emit_event(self) -> None:
-        """Method to set up memory and emit photons.
-
-        If the protocol is in round 1, the memory will be first set to the |+> state.
-        Otherwise, it will apply an x_gate to the memory.
-        Regardless of the round, the memory `excite` method will be invoked.
+        """Method to set up memory and excite it (for photon emission).
 
         Side Effects:
             May change state of attached memory.
             May cause attached memory to emit photon.
         """
 
-        # log.logger.warning(f'Emit event occurs at {self.owner.timeline.now()}')
-
-        if self.ent_round != 1:
-            raise ValueError('Entanglement protocol isn\'t single-heralded as desired.')
+        # TODO do I need to fix this to be the longer of the two atoms' timings?
         
-        process = Process(self.memory, "excite", ["time_bin", self.middle])
-        event = Event(self.owner.timeline.now() + self.memory.initialize_cool_prep() + self.memory.excite_pulse_time, process)
+        process = Process(self.memory, "excite", [self.middle])
+        time = self.memory.initialize_cool_prep() + self.memory.excite_pulse_time
+        assert time == self.emit_delay, \
+        "Time to emission should equal memories emit delay, but doesn\'t {} {} {}".format(time, self.emit_delay, self.owner.timeline.now())
+        event = Event(self.owner.timeline.now() + time, process)
         self.owner.timeline.schedule(event)
         self.scheduled_events.append(event)
-
-        # if self.ent_round == 1:
-        #     self.memory.update_state(EntanglementGenerationTimeBin._plus_state)
-        # else:
-        #     raise ValueError('Entanglement protocol isn\'t single-heralded as desired.')
-        
-        # if (not self.owner.atom_lost):
-        #     prob_atom_lost = .9708
-        #     if self.owner.generator.random() > prob_atom_lost:
-        #         log.logger.info('Atom on ' + self.owner.name + ' lost in sequence attempt ' + str(self.owner.attempts))
-        #         self.memory.efficiency = 0
-        #         self.owner.atom_lost = True
 
 
     def received_message(self, src: str, msg: HetEntanglementGenerationMessage) -> None:
@@ -333,119 +219,106 @@ class YbEGA(EntanglementGenerationA):
         Side Effects:
             May schedule various internal and hardware events.
         """
+
         if src not in [self.middle, self.remote_node_name]:
             return
+        
         msg_type = msg.msg_type
 
-        log.logger.debug("{} {} received message from node {} of type {}, round={}".format(
-                         self.owner.name, self.name, src, msg.msg_type, self.ent_round))
+        log.logger.debug("{} {} received message from node {} of type {}".format(
+                         self.owner.name, self.name, src, msg.msg_type))
 
         if msg_type is GenerationMsgType.NEGOTIATE:  # primary -> non-primary
+
             # configure params
             other_qc_delay = msg.qc_delay
             self.qc_delay = self.owner.qchannels[self.middle].delay
             cc_delay = int(self.owner.cchannels[src].delay)
             total_quantum_delay = max(self.qc_delay, other_qc_delay)  # two qc_delays are the same for "meet_in_the_middle"
 
-            # get time for first excite event
-            memory_excite_time = self.memory.next_excite_time
-            min_time = max(self.owner.timeline.now(), memory_excite_time) + total_quantum_delay - self.qc_delay + cc_delay  # cc_delay time for NEGOTIATE_ACK
-            
-            # get expected arrival time of an early photon
-            emit_delay = self.memory.initialize_time + self.memory.cool_time + self.memory.state_prep_time + self.memory.excite_pulse_time
+            # get time required after excitation before emission
+            other_emit_delay = msg.emit_delay
+            self.emit_delay = self.memory.initialize_time + self.memory.cool_time + self.memory.state_prep_time + self.memory.excite_pulse_time
 
+            # how long memory has already been in trap:
             time_in_trap = self.owner.timeline.now() - self.owner.app.last_trap_time
-
+            # check if we need to retrap (and do so if necessary):
             if (self.memory.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or (self.memory.wavelength == 1389 and (self.memory.attempts % self.memory.retrap_num) == 1):
                 self.memory.need_to_retrap = True
                 added_delay = self.memory.retrap_time
-                emit_delay += added_delay
-                for event in self.owner.timeline.events:
-                    if event.process.activation in ['lose_atom']:
+                self.emit_delay += added_delay
+                for event in self.scheduled_events:
+                    if event.process.activation == 'lose_atom':
                         self.owner.timeline.remove_event(event)
                 self.owner.app.last_trap_time = self.owner.timeline.now()
 
+                # schedule next atom loss event
                 assert self.memory.atom_lifetime > 0, f"Attempting to schedule atom loss for {self.memory.name} with 0 atom lifetime."
-                time_to_next = int(self.owner.get_generator().exponential(self.memory.atom_lifetime) * 1e12)
+                time_to_next = int(self.owner.get_generator().exponential(self.memory.atom_lifetime) * 1e12) # TODO double check this is correct, this seems wrong
                 time = time_to_next + self.owner.timeline.now()
                 process = Process(self.memory, "lose_atom", [])
                 event = Event(time, process)
                 self.owner.timeline.schedule(event)
+                self.scheduled_events.append(event)
 
+            # get max emit delay
+            total_emit_delay = max(other_emit_delay, self.emit_delay) # largest possible time for emission
 
-            emit_time = self.owner.schedule_qubit(self.middle, min_time + emit_delay)  # used to send memory
-            # self.owner.schedule_qubit(self.middle, emit_time + self.memory.bin_separation) ## NO LONGER NEED AS SENDING ONLY IN FIRST TIME BIN 
-            # self.expected_time = emit_time + self.qc_delay + self.memory.bin_separation # need to be prepared for worst case scenario - a late photon
-            self.early_bin = (emit_time + self.qc_delay), (emit_time + self.qc_delay + self.memory.bin_width)
-            self.late_bin = (self.early_bin[0] + self.memory.bin_separation), (self.early_bin[1] + self.memory.bin_separation)
+            # get earliest possible time for first excite event
+            min_time = self.owner.timeline.now() + total_quantum_delay - self.qc_delay + cc_delay  # cc_delay time for NEGOTIATE_ACK
+            
+            # schedule emission into quantum channel
+            emit_time = self.owner.schedule_qubit(self.middle, min_time + total_emit_delay)
+
+            # create bins
+            self.expected_time = emit_time + self.qc_delay
+            self.early_bin = [emit_time + self.qc_delay, (emit_time + self.qc_delay + self.memory.bin_width)]
+            self.late_bin = [self.early_bin[0] + self.memory.bin_separation, (self.early_bin[1] + self.memory.bin_separation)]
            
-
-            # schedule emit
+            # schedule start of emission process
             process = Process(self, "emit_event", [])
-            # CHANGED:
-            begin_emit_event = emit_time - emit_delay
-            event = Event(time=begin_emit_event, process=process)
-            # event = Event(min_time, process)
+            begin_emit_event_time = emit_time - self.emit_delay # time we should beginning emission process
+            event = Event(time=begin_emit_event_time, process=process)
             self.owner.timeline.schedule(event)
             self.scheduled_events.append(event)
 
             # send negotiate_ack
             other_emit_time = emit_time + self.qc_delay - other_qc_delay
-            message = HetEntanglementGenerationMessage(GenerationMsgType.NEGOTIATE_ACK, self.remote_protocol_name, YbEGA, emit_time=other_emit_time, min_time=min_time) # USED To BE min_time + emit_time_delta
+            message = HetEntanglementGenerationMessage(GenerationMsgType.NEGOTIATE_ACK, self.remote_protocol_name, BARRET_KOK, emit_time=other_emit_time, min_time=min_time) # USED To BE min_time + emit_time_delta
             self.owner.send_message(src, message)
 
-
+            # schedule future update_memory
             # TODO: base future start time on resolution
-            future_start_time = self.late_bin[1] + self.owner.cchannels[self.middle].delay + 1_000  # delay is for sending the BSM_RES to end nodes,
-
+            future_start_time = self.late_bin[1] + self.owner.cchannels[self.middle].delay + 1_000  # delay is for sending the BSM_RES to end nodes, 1ns is just tolerance
             process = Process(self, "update_memory", [])
             event = Event(future_start_time, process)
             self.owner.timeline.schedule(event)
             self.scheduled_events.append(event)
 
         elif msg_type is GenerationMsgType.NEGOTIATE_ACK:  # non-primary --> primary
-            # configure params
-            emit_delay = self.memory.initialize_time + self.memory.cool_time + self.memory.state_prep_time + self.memory.excite_pulse_time
 
-            time_in_trap = self.owner.timeline.now() - self.owner.app.last_trap_time
-
-            if (self.memory.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or ((self.memory.attempts % self.memory.retrap_num) == 1 and self.memory.wavelength == 1389):
-                self.memory.need_to_retrap = True
-                added_delay = self.memory.retrap_time
-                emit_delay += added_delay
-
-                self.owner.app.last_trap_time = self.owner.timeline.now()
-                
-                assert self.memory.atom_lifetime > 0, f"Attempting to schedule atom loss for {self.memory.name} with 0 atom lifetime."
-                time_to_next = int(self.owner.get_generator().exponential(self.memory.atom_lifetime) * 1e12)
-                time = time_to_next + self.owner.timeline.now()
-                process = Process(self.memory, "lose_atom", [])
-                event = Event(time, process)
-                self.owner.timeline.schedule(event)
-
-            # self.expected_time = msg.emit_time + self.qc_delay + self.memory.bin_separation # expected time for middle BSM node to receive a late photon
-            self.early_bin = (msg.emit_time + self.qc_delay), (msg.emit_time + self.qc_delay + self.memory.bin_width)
-            self.late_bin = (self.early_bin[0] + self.memory.bin_separation), (self.early_bin[1] + self.memory.bin_separation)
-
-            # we include photon_bin_separation above as need to consider getting a photon in the 'late' state
-
+            # NOTE unsure if we need this, I don't think it could ever occur
             if msg.emit_time < self.owner.timeline.now():  # emit time calculated by the non-primary node
                 msg.emit_time = self.owner.timeline.now()
 
             # schedule emit
             emit_time = self.owner.schedule_qubit(self.middle, msg.emit_time)
-            # self.owner.schedule_qubit(self.middle, msg.emit_time + self.memory.bin_separation) # NOT DOING ANYMORE
             assert emit_time == (msg.emit_time), \
                 "Invalid eg emit times {} {} {}".format(emit_time, msg.emit_time, self.owner.timeline.now())
+            
+            # set bins
+            self.early_bin = [msg.emit_time + self.qc_delay, msg.emit_time + self.qc_delay + self.memory.bin_width]
+            self.late_bin = [self.early_bin[0] + self.memory.bin_separation, self.early_bin[1] + self.memory.bin_separation]
 
+            # schedule start of emission process
             process = Process(self, "emit_event", [])
-            event = Event(msg.emit_time - emit_delay, process)
+            begin_emit_event_time = emit_time - self.emit_delay # time we should beginning emission process
+            event = Event(begin_emit_event_time, process)
             self.owner.timeline.schedule(event)
             self.scheduled_events.append(event)
 
-            # schedule future memory update where we differentiate between psi+ and psi-
-            # TODO: base future start time on resolution
-            # NOTE: THERE USED TO BE A GAP OF 10 THAT I AM CHANGING TO 1000
+            # schedule future memory update
+            # TODO: base future start time on detector resolution
             future_start_time = self.late_bin[1] + self.owner.cchannels[self.middle].delay + 1_000
             process = Process(self, "update_memory", [])
             event = Event(future_start_time, process)
@@ -455,54 +328,32 @@ class YbEGA(EntanglementGenerationA):
         elif msg_type is GenerationMsgType.MEAS_RES:  # from middle BSM to both non-primary and primary
             detector_num = msg.detector
             time = msg.time
-            resolution = msg.resolution
+            resolution = msg.resolution # detector resolution
             click_type = msg.click_type # 0 for noise, 1 for signal, 2 for dark count
 
             if click_type == None:
                 raise ValueError('\'click_type\' should be an int, not None. Message must have not passed through kwargs.')
 
+            log.logger.debug("{} received MEAS_RES={} at time={:,}, expected={:,}, resolution={}, click_type={}".format(
+                             self.owner.name, detector_num, time, self.expected_time, resolution, click_type))
 
-            log.logger.debug("{} received MEAS_RES={} at time={:,}, expected={:,}, resolution={}, round={}".format(
-                             self.owner.name, detector_num, time, self.expected_time, resolution, self.ent_round))
-            
-            # steps for new valid time function:
-            # 1. remove items from lists that are too old progressively
-            # 2. if we have reached within bin width of expected time start checking:
-            # 3. approve is there are 1 early and 1 late up to tolerance
-
-            if not self.detector_resolution:
+            if not self.detector_resolution: # only should occur once per attempt
                 self.detector_resolution = resolution
                 self.update_bins(resolution)
 
             # early time bin
             if self.early_bin[0] <= time <= self.early_bin[1]:
-                # if click_type == 1:
-                #     print(time - self.early_bin[0])
-                #     pass
                 self.early_click_types.append(click_type)
                 self.early_detectors.append(detector_num)
-                
             # late time bin
             elif self.late_bin[0] <= time <= self.late_bin[1]:
                 self.late_click_types.append(click_type)
                 self.late_detectors.append(detector_num) 
+            # neither time bin
             else:
                 log.logger.info('Photon found outside a bin.')
         else:
             raise Exception("Invalid message {} received by EG on node {}".format(msg_type, self.owner.name))
-
-    def is_ready(self) -> bool:
-        return self.remote_protocol_name is not None
-
-    def memory_expire(self, memory: "Memory") -> None:
-        """Method to receive expired memories."""
-
-        assert memory == self.memory
-
-        self.update_resource_manager(memory, MemoryInfo.RAW)
-        for event in self.scheduled_events:
-            if event.time >= self.owner.timeline.now():
-                self.owner.timeline.remove_event(event)
 
     def _entanglement_succeed(self):
         log.logger.warning(self.owner.name + " successful entanglement of memory {}".format(self.memory))
@@ -510,23 +361,11 @@ class YbEGA(EntanglementGenerationA):
         self.memory.entangled_memory["memo_id"] = self.remote_memo_id
         self.memory.fidelity = self.memory.raw_fidelity
 
-        for event in self.owner.timeline.events:
-            if event.process.activation in ['add_dark_count', 'record_detection', 'schedule_atom_loss', 'lose_atom']:
+        for event in self.scheduled_events:
+            if event.process.activation == 'lose_atom' and event.time > (self.owner.timeline.now() + self.memory.readout_time):
                 self.owner.timeline.remove_event(event)
 
         self.update_resource_manager(self.memory, MemoryInfo.ENTANGLED)
-        '''
-
-        time_to_measurement_results = self.owner.timeline.now() + self.memory.readout_time # current time + time it takes to measure
-        if self.owner.app.basis == "X":
-            time_to_measurement_results += self.memory.raman_half_pi_pulse_time
-
-        self.owner.app.time_in_trap = time_to_measurement_results - self.owner.app.last_trap_time
-
-        process = Process(self, 'update_resource_manager', [self.memory, MemoryInfo.ENTANGLED])
-        event = Event(time_to_measurement_results, process)
-        self.owner.timeline.schedule(event)
-        '''
 
     def _entanglement_fail(self):
         for event in self.scheduled_events:
@@ -535,11 +374,11 @@ class YbEGA(EntanglementGenerationA):
         self.update_resource_manager(self.memory, MemoryInfo.RAW)
 
 
-class YbEGB(EntanglementGenerationB):
-    """Entanglement generation protocol for BSM node.
+class HetEGB(EntanglementGenerationB):
+    """Entanglement generation protocol for BSM node in heterogenous quantum network.
 
-    The EntanglementGenerationB protocol should be instantiated on a BSM node.
-    Instances will communicate with the A instance on neighboring quantum router nodes to generate entanglement.
+    The HetEGB protocol should be instantiated on a BSM node.
+    Instances will communicate with the HetEGA instance on neighboring quantum router nodes to generate entanglement.
 
     Attributes:
         own (BSMNode): node that protocol instance is attached to.
@@ -547,20 +386,7 @@ class YbEGB(EntanglementGenerationB):
         others (List[str]): list of neighboring quantum router nodes
     """
 
-    def __init__(self, owner: "Node", name: str, others: List[str]):
-        """Constructor for entanglement generation B protocol.
-
-        Args:
-            own (Node): attached node.
-            name (str): name of protocol instance.
-            others (List[str]): name of protocol instance on end nodes.
-        """
-
-        super().__init__(owner, name, others)
-        assert len(others) == 2
-        self.others = others  # end nodes
-
-    def bsm_update(self, bsm: "SingleAtomBSM", info: Dict[str, Any]):
+    def bsm_update(self, bsm: "BSM", info: Dict[str, Any]):
         """Method to receive detection events from BSM on node.
 
         Args:
@@ -570,27 +396,12 @@ class YbEGB(EntanglementGenerationB):
 
         assert info['info_type'] == "BSM_res"
 
-        res = info["res"]
-        time = info["time"]
-        resolution = bsm.detectors[0].time_resolution
+        res = info["res"]                               # which detector clicked
+        time = info["time"]                             # at what time detector was click
+        resolution = bsm.detectors[0].time_resolution   # resolution of detectors in BSM (assuming same)
+        click_type = info['click_type']                 # type of detector click (0 -> noise, 1 -> signal, 2 -> detector dark count)
 
         for node in self.others:
             message = HetEntanglementGenerationMessage(GenerationMsgType.MEAS_RES, None,              # receiver is None (not paired)
-                                                    YbEGA, detector=res, time=time, resolution=resolution, click_type=info['click_type'])
+                                                    HetEGA, detector=res, time=time, resolution=resolution, click_type=click_type)
             self.owner.send_message(node, message)
-
-    def received_message(self, src: str, msg: HetEntanglementGenerationMessage):
-        raise Exception("EntanglementGenerationB protocol '{}' should not "
-                        "receive message".format(self.name))
-
-    def start(self) -> None:
-        pass
-
-    def set_others(self, protocol: str, node: str, memories: List[str]) -> None:
-        pass
-
-    def is_ready(self) -> bool:
-        return True
-
-    def memory_expire(self, memory: "Memory") -> None:
-        raise Exception("Memory expire called for EntanglementGenerationB protocol '{}'".format(self.name))

@@ -8,6 +8,7 @@ class HetEntanglementGenerationMessage(EntanglementGenerationMessage):
 
         # need to just add min time
         self.min_time: int | None = None
+        self.emit_delay: int | None = None
 
         if ('click_type' in kwargs):
             self.click_type = kwargs['click_type']
@@ -15,6 +16,7 @@ class HetEntanglementGenerationMessage(EntanglementGenerationMessage):
             self.click_type = None # never the case for our het networks
 
         fields = {
+            GenerationMsgType.NEGOTIATE: ['emit_delay'],
             GenerationMsgType.NEGOTIATE_ACK: ['min_time']
         }
 

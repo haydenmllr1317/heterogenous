@@ -36,7 +36,7 @@ from sequence.utils import log
 from sequence.components.bsm import SingleAtomBSM, SingleHeraldedBSM, PolarizationBSM
 from encoding import time_bin, yb_time_bin
 from copy import copy
-from generation import YbEGB
+from generation import HetEGB
 from sequence.topology.node import Node
 from qfc import QFC
 
@@ -104,8 +104,8 @@ class HetBSMNode(Node):
         self.detectors_recorded = 0
         self.trigger_sent = 0
 
-        # TODO if YbEGB inherits from EGB than we need to have multiple options
-        self.eg = YbEGB(self, "{}_eg".format(name), other_nodes)
+        # TODO if YbEGB inherits from EGB than we need to have multiple options (I"VE FORGOTTEN WHAT THE HECK THIS MEANS)
+        self.eg = HetEGB(self, "{}_eg".format(name), other_nodes)
         bsm.attach(self.eg)
 
     # overwrote this method so that photons go straight to correct QFCs

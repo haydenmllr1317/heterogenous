@@ -50,7 +50,7 @@ def main():
     meas_fid = 0.99 # hardcoded this, TODO have it read from node or somewhere else later
 
     # network topology json reference and build
-    network_config = 'config/line_3.json'
+    network_config = 'config/linear.json'
     network_topo = YbRouterNetTopo(network_config)
 
     tl = network_topo.get_timeline()
@@ -80,8 +80,8 @@ def main():
 
     #### logging added here ####
     # log_filename = f'pce={photon_collection_efficiency},lambda={wavelength},num_trials={n}.log'
-    log_filename = f'tmp/data/fid(qfc_noise)/qfc_noise={qfc_noise}.log'
-    # log_filename = 'tmp/checking.log'
+    # log_filename = f'tmp/data/fid(qfc_noise)/qfc_noise={qfc_noise}.log'
+    log_filename = 'tmp/checking.log'
     log.set_logger(__name__, tl, log_filename)
     log.set_logger_level('WARNING')
     log.track_module('main_yb_yb_EG_sim')
@@ -125,7 +125,7 @@ def main():
 
     # TEMPORARY SOLUTION
     node_init = network_topo.get_nodes_by_type(YbRouterNetTopo.QUANTUM_ROUTER)[0]
-    node_resp = network_topo.get_nodes_by_type(YbRouterNetTopo.QUANTUM_ROUTER)[2]
+    node_resp = network_topo.get_nodes_by_type(YbRouterNetTopo.QUANTUM_ROUTER)[1]
     
 
     for i in range(n):
@@ -136,7 +136,7 @@ def main():
             basis = "X"
             basis = "X"
         beginning = tl.now()
-        starting_attempts = node_init.app.attempts
+        starting_attempts = node_init.get_components_by_type(MemoryArray)[0].memories[0].attempts
         for node in network_topo.get_nodes_by_type(YbRouterNetTopo.QUANTUM_ROUTER):
             node.app.last_trap_time = beginning - node.app.time_in_trap # sets last time of trapping to time_in_trap before current time
         name_to_app[node_init.name].start(node_resp.name, beginning + delta, beginning + 10*SECOND, 1, 0.1, basis) # requesting 1 pair with min fid of 0.1
@@ -144,7 +144,7 @@ def main():
         tl.run()
 
         taken_time = node_init.app.entanglement_time - beginning
-        finishing_attempts = node_init.app.attempts
+        finishing_attempts = node_init.get_components_by_type(MemoryArray)[0].memories[0].attempts
         traversed_attempts = finishing_attempts - starting_attempts
         # net_handshake_time = 31_000_000 + 45_000_000*traversed_attempts # 31us is for rule loading, 45us is for protocol handshakes
         # actual_time = (taken_time - net_handshake_time)*(10**-12)

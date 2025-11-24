@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 from sequence.resource_management.rule_manager import Rule, Arguments
 from sequence.entanglement_management.generation.barret_kok import BarretKokA
 from sequence.entanglement_management.generation.generation_base import EntanglementGenerationA
-from generation import YbEGA
+from generation import HetEGA
 from sequence.entanglement_management.purification.bbpssw_circuit import BBPSSWCircuit
 
 from swapping import EntanglementSwappingA, EntanglementSwappingB
@@ -43,7 +43,7 @@ def eg_rule_action1(memories_info: List["MemoryInfo"], args: Dict[str, Any]) -> 
     index = args["index"]
     memo_type = args["memo_type"]
     if memo_type == "Yb": # TODO change to enable both Yb and uW
-        protocol = YbEGA(None, "EGTB." + memory.name, mid, path[index-1], memory, memo_type)
+        protocol = HetEGA(None, "EGTB." + memory.name, mid, path[index-1], memory)
     else:
         protocol = EntanglementGenerationA(None, "EGA." + memory.name, mid, path[index - 1], memory)
     return protocol, [None], [None], [None]
@@ -59,7 +59,7 @@ def eg_rule_action2(memories_info: List["MemoryInfo"], args: Arguments) -> Tuple
     memory = memories[0]
     memo_type = args["memo_type"]
     if memo_type == "Yb":
-        protocol = YbEGA(None, "EGTB" + "." + memory.name, mid, path[index+1], memory, memo_type)
+        protocol = HetEGA(None, "EGTB" + "." + memory.name, mid, path[index+1], memory)
     else:
         protocol = EntanglementGenerationA(None, "EGA." + memory.name, mid, path[index + 1], memory)
     req_args = {"name": args["name"], "reservation": args["reservation"]}

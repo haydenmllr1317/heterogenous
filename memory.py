@@ -193,6 +193,7 @@ class Yb556States(Enum):
 class Yb(Memory):
 
     _plus_state = [sqrt(1/2), sqrt(1/2)]
+    _zero_ket = [1,0]
 
     def __init__(self, name: str, timeline: "Timeline", fidelity: float, frequency: float,
                  efficiency: float, coherence_time: float, wavelength: int, decoherence_errors: List[float] = None, cutoff_ratio: float = 1):
@@ -231,11 +232,12 @@ class Yb(Memory):
         #################################    #19-21 in enum
         #################################    #22 is readout fidelity (set to 99.5)
         #################################    #23 for 2-qubit gate fidelity
+        #################################    #24 for atomic bsm measurement time
 
         # TODO what is 2-qubit gate fidelity? (0.997 is Infleqtion's result, 0.995 might be good default)
 
 
-    def excite(self, encoding_type, dst="") -> None:
+    def excite(self, dst="") -> None:
 
         # if can't excite yet, do nothing
         if self.timeline.now() < self.next_excite_time:
@@ -246,16 +248,13 @@ class Yb(Memory):
         if wavelength != self.wavelength:
             log.logger.info('Photon with unideal wavelength of ' + str(wavelength) + ' emmited (wanted ' + str(self.wavelength) + ').')
 
-        # create photon
-        if encoding_type == "time_bin":
-            yb_encoding = {'name': 'yb_time_bin', 'bin_separation': self.bin_separation, 'raw_fidelity': 1.0}
-            photon = Photon("", self.timeline, wavelength=wavelength, location=self.name, encoding_type=yb_encoding, 
-            quantum_state=self.qstate_key, use_qm=True) #TODO ADD A WAY TO POINT TOWARDS THE ACTUAL FOUR_VECTOR ENTANGLED STATE (FOR ATOM AND PHOTON)
-            # keep track of memory initialization time
-            self.generation_time = self.timeline.now()
-            self.last_update_time = self.timeline.now()
-        else:
-            raise ValueError("Invalid encoding type {} specified for memory.exite()".format(encoding_type))
+
+        yb_encoding = {'name': 'yb_time_bin', 'bin_separation': self.bin_separation, 'raw_fidelity': 1.0}
+        photon = Photon("", self.timeline, wavelength=wavelength, location=self.name, encoding_type=yb_encoding, 
+        quantum_state=self.qstate_key, use_qm=True) #TODO ADD A WAY TO POINT TOWARDS THE ACTUAL FOUR_VECTOR ENTANGLED STATE (FOR ATOM AND PHOTON)
+        # keep track of memory initialization time
+        self.generation_time = self.timeline.now()
+        self.last_update_time = self.timeline.now()
 
         photon.timeline = None  # facilitate cross-process exchange of photons
         # photon.is_null = True # NOTE I changed this cuz I don't think we need
@@ -358,8 +357,6 @@ class Yb(Memory):
             if len(qm.states[k].state) != 4: # if not entangled
                 log.logger.warning('Incorrectly entangled state.')
                 # qm.set([k], [1, 0])
-            else:
-                print(qm.states[k].state)
 
         
         if self.owner.app.basis == "X":
@@ -422,10 +419,12 @@ class Yb(Memory):
             if self.atom_state != Yb1389States.LOST:
                 log.logger.warning(f'{self.name} atom lost through lifetime expiration!')
                 self.atom_state = Yb1389States.LOST
+                self.update_state(self._zero_ket)
         elif self.wavelength == 556:
             if self.atom_state != Yb556States.LOST:
                 log.logger.warning(f'{self.name} atom lost through lifetime expiration!')
                 self.atom_state = Yb556States.LOST
+                self.update_state(self._zero_ket)
 
 
     
