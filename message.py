@@ -9,6 +9,9 @@ class HetEntanglementGenerationMessage(EntanglementGenerationMessage):
         # need to just add min time
         self.min_time: int | None = None
         self.emit_delay: int | None = None
+        self.bin_width: int | None = None
+        self.bin_separation: int | None = None
+        self.total_bin_separation: int | None = None
 
         if ('click_type' in kwargs):
             self.click_type = kwargs['click_type']
@@ -17,7 +20,11 @@ class HetEntanglementGenerationMessage(EntanglementGenerationMessage):
 
         fields = {
             GenerationMsgType.NEGOTIATE: ['emit_delay'],
-            GenerationMsgType.NEGOTIATE_ACK: ['min_time']
+            GenerationMsgType.NEGOTIATE: ['bin_width'],
+            GenerationMsgType.NEGOTIATE: ['bin_separation'],
+            GenerationMsgType.NEGOTIATE_ACK: ['min_time'],
+            GenerationMsgType.NEGOTIATE_ACK: ['total_bin_separation'],
+            GenerationMsgType.NEGOTIATE_ACK: ['total_bin_width']
         }
 
         if msg_type in fields:

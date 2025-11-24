@@ -106,8 +106,10 @@ class HetEGA(EntanglementGenerationA):
                 self.owner.timeline.schedule(event)
                 self.scheduled_events.append(event)
             
+            bin_width = self.memory.bin_width
+            bin_separation = self.memory.bin_separation
             message = HetEntanglementGenerationMessage(GenerationMsgType.NEGOTIATE, self.remote_protocol_name, BARRET_KOK,
-                                                    qc_delay=self.qc_delay, emit_delay=self.emit_delay)
+                                                    qc_delay=self.qc_delay, emit_delay=self.emit_delay, bin_width=bin_width, bin_separation=bin_separation)
             self.owner.send_message(self.remote_node_name, message)
             
     def _reset_params(self):
@@ -270,10 +272,13 @@ class HetEGA(EntanglementGenerationA):
             # schedule emission into quantum channel
             emit_time = self.owner.schedule_qubit(self.middle, min_time + total_emit_delay)
 
+            total_bin_separation = max(self.memory.bin_separation, msg.bin_separation)
+            total_bin_width = max(self.meemory.bin_width, msg.bin_width)
+
             # create bins
             self.expected_time = emit_time + self.qc_delay
-            self.early_bin = [emit_time + self.qc_delay, (emit_time + self.qc_delay + self.memory.bin_width)]
-            self.late_bin = [self.early_bin[0] + self.memory.bin_separation, (self.early_bin[1] + self.memory.bin_separation)]
+            self.early_bin = [emit_time + self.qc_delay, (emit_time + self.qc_delay + total_bin_width)]
+            self.late_bin = [self.early_bin[0] + total_bin_separation, (self.early_bin[1] + total_bin_separation)]
            
             # schedule start of emission process
             process = Process(self, "emit_event", [])
@@ -284,7 +289,7 @@ class HetEGA(EntanglementGenerationA):
 
             # send negotiate_ack
             other_emit_time = emit_time + self.qc_delay - other_qc_delay
-            message = HetEntanglementGenerationMessage(GenerationMsgType.NEGOTIATE_ACK, self.remote_protocol_name, BARRET_KOK, emit_time=other_emit_time, min_time=min_time) # USED To BE min_time + emit_time_delta
+            message = HetEntanglementGenerationMessage(GenerationMsgType.NEGOTIATE_ACK, self.remote_protocol_name, BARRET_KOK, emit_time=other_emit_time, total_bin_separation=total_bin_separation, total_bin_width=total_bin_width)
             self.owner.send_message(src, message)
 
             # schedule future update_memory
@@ -297,6 +302,12 @@ class HetEGA(EntanglementGenerationA):
 
         elif msg_type is GenerationMsgType.NEGOTIATE_ACK:  # non-primary --> primary
 
+            assert msg.total_bin_separation >= self.memory.bin_separation, \
+                "Protocol bin separation must be >= each memory bin separation {} {} {}".format(total_bin_separation, self.memory.bin_separation, self.owner.timeline.now())
+
+            assert msg.total_bin_width >= self.memory.bin_width, \
+                "Protocol bin width must be >= each memory bin width {} {} {}".format(msg.total_bin_width, self.memory.bin_width, self.owner.timeline.now())
+
             # NOTE unsure if we need this, I don't think it could ever occur
             if msg.emit_time < self.owner.timeline.now():  # emit time calculated by the non-primary node
                 msg.emit_time = self.owner.timeline.now()
@@ -307,8 +318,8 @@ class HetEGA(EntanglementGenerationA):
                 "Invalid eg emit times {} {} {}".format(emit_time, msg.emit_time, self.owner.timeline.now())
             
             # set bins
-            self.early_bin = [msg.emit_time + self.qc_delay, msg.emit_time + self.qc_delay + self.memory.bin_width]
-            self.late_bin = [self.early_bin[0] + self.memory.bin_separation, self.early_bin[1] + self.memory.bin_separation]
+            self.early_bin = [msg.emit_time + self.qc_delay, msg.emit_time + self.qc_delay + msg.total_bin_width]
+            self.late_bin = [self.early_bin[0] + msg.total_bin_separation, self.early_bin[1] + msg.total_bin_separation]
 
             # schedule start of emission process
             process = Process(self, "emit_event", [])

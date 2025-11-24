@@ -340,23 +340,15 @@ class Yb(Memory):
             raise ValueError('Wavelength ' + str(self.wavelength) + ' is not supported for ' + self.name + '.')
         
     def measure(self, other_qkey) -> float:
-        # ideally this process is supressing the measured qubits state and forcing the key to point towards
-        # the others'
-
         key = self.qstate_key
-        # key1 = self.timeline.get_entity_by_name(self.entangled_memory['node_id'] + '.MemoryArray[0]').qstate_key
         keys = [key, other_qkey]
-
-        # print(self.timeline.quantum_manager.states[0].state)
-        # if self.timeline.quantum_manager.states[0].state != self.timeline.quantum_manager.states[1].state:
-        #     raise ValueError('soemthing weird')
         qm = self.timeline.quantum_manager
 
         for k in keys:
             # print(str(qm.states[k].state))
             if len(qm.states[k].state) != 4: # if not entangled
                 log.logger.warning('Incorrectly entangled state.')
-                # qm.set([k], [1, 0])
+                # qm.set([k], [1, 0]) # TODO do I want to be thoughtful about how I'm setting up the states?
 
         
         if self.owner.app.basis == "X":
@@ -365,6 +357,7 @@ class Yb(Memory):
         meas = qm.run_circuit(_meas_circuit, keys, self.get_generator().random())
 
         result = [meas[key], meas[other_qkey]]
+        
         # for ideal fidelity we expect:
         #   psi+:
         #       1,Z
@@ -458,4 +451,38 @@ class Transmon(Memory):
         # TODO implement memory absorbtion 
         pass
 
+    def excite(self, dst="") -> None:
+        pass
+
+    def initialize_cool_prep(self) -> int:
+        pass
+
+    def measure(self, other_qkey) -> float:
+        key = self.qstate_key
+        keys = [key, other_qkey]
+        qm = self.timeline.quantum_manager
+
+        for k in keys:
+            # print(str(qm.states[k].state))
+            if len(qm.states[k].state) != 4: # if not entangled
+                log.logger.warning('Incorrectly entangled state.')
+                # qm.set([k], [1, 0]) # TODO do I want to be thoughtful about how I'm setting up the states?
+
+        
+        if self.owner.app.basis == "X":
+            qm.run_circuit(_H_circuit, keys).keys()
+
+        meas = qm.run_circuit(_meas_circuit, keys, self.get_generator().random())
+
+        result = [meas[key], meas[other_qkey]]
+        
+        # for ideal fidelity we expect:
+        #   psi+:
+        #       1,Z
+        #       0,X
+        #   psi-:
+        #       1,Z
+        #       1,X
+
+        return result
 
