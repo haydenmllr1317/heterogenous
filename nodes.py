@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from sequence.app.request_app import RequestApp
 
 from sequence.kernel.entity import Entity, ClassicalEntity
-from memory import MemoryArray
+from memory import HetMemoryArray
 from time_bin_bsm import BSM, HetTimeBinBSM
 from sequence.components.light_source import LightSource
 from detector import Detector
@@ -177,7 +177,7 @@ class HetQR(Node):
         self.memo_arr_name = name + ".MemoryArray"
         # memo_arr_args = component_templates.get("MemoryArray", {})
         self.memo_type = component_templates.get("memo_type", None)
-        memory_array = MemoryArray(self.memo_arr_name, tl, num_memories=memo_size, memory_type = self.memo_type, wavelength=wavelength)
+        memory_array = HetMemoryArray(self.memo_arr_name, tl, num_memories=memo_size, memory_type = self.memo_type, wavelength=wavelength)
         self.add_component(memory_array)
         memory_array.add_receiver(self)
 

@@ -90,9 +90,8 @@ class Detector(Entity):
             if not res[key]:
                 return
 
-        if 'photon_type' in kwargs:
-            if kwargs['photon_type'] == 0:
-                self.owner.owner.detectors_got += 1  
+        if ('photon_type' in kwargs) and (kwargs['photon_type'] == 0):
+            self.owner.owner.detectors_got += 1  
 
         if self.get_generator().random() < self.efficiency:
             self.record_detection(**kwargs)

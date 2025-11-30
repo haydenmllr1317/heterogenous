@@ -42,7 +42,7 @@ def eg_rule_action1(memories_info: List["MemoryInfo"], args: Dict[str, Any]) -> 
     path = args["path"]
     index = args["index"]
     memo_type = args["memo_type"]
-    if memo_type == "Yb": # TODO change to enable both Yb and uW
+    if memo_type == "Yb" or memo_type == "uW":
         protocol = HetEGA(None, "EGTB." + memory.name, mid, path[index-1], memory)
     else:
         protocol = EntanglementGenerationA(None, "EGA." + memory.name, mid, path[index - 1], memory)

@@ -51,8 +51,8 @@ class EntangleGenNodeTimeBin(Node):
                 # params in order:
                 #   initial fidelity of memory
                 #   maximum freq of excitation for memory
-                #   coherance time (avg time in s)
-                #   decoherance rate rate of decoherance
+                #   coherence time (avg time in s)
+                #   decoherence rate rate of decoherence
                 #   wavelength of photons emmitted (in nm)
         memory.add_receiver(self)
         self.add_component(memory)

@@ -72,7 +72,7 @@ def get_output(p: Popen):
 #                 get_output(p)
 #         ps = new_ps
 
-
+'''
 # NOTE VARYING: QFC DARK COUNT
 tasks = []
 
@@ -101,6 +101,101 @@ while len(tasks) > 0 or len(ps) > 0:
             else:
                 get_output(p)
         ps = new_ps
+'''
+        
+'''
+# NOTE VARYING: RETRAP NUM
+tasks = []
+
+command = ['python3', 'main_yb_yb_EG_sim.py']
+
+for i in range(49):
+    args = []
+    args.append('-reloadcount')
+    x = 5*(i) + 10
+    args.append(str(x))
+    tasks.append(command+args)
+
+parallel = 10
+ps = []
+while len(tasks) > 0 or len(ps) > 0:
+    if len(ps) < parallel and len(tasks) > 0:
+        task = tasks.pop(0)
+        print(task, f'{len(tasks)} still in queue')
+        ps.append(Popen(task, stdout=PIPE, stderr=PIPE))
+    else:
+        time.sleep(0.05)
+        new_ps = []
+        for p in ps:
+            if p.poll() is None:
+                new_ps.append(p)
+            else:
+                get_output(p)
+        ps = new_ps
+'''
+
+
+# # NOTE VARYING: BIN WIDTH
+# tasks = []
+
+# command = ['python3', 'main_yb_yb_EG_sim.py']
+
+# for i in range(49):
+#     args = []
+#     args.append('-bwidth')
+#     x = 500_000 + 20_000*(i)
+#     args.append(str(x))
+#     tasks.append(command+args)
+
+# parallel = 10
+# ps = []
+# while len(tasks) > 0 or len(ps) > 0:
+#     if len(ps) < parallel and len(tasks) > 0:
+#         task = tasks.pop(0)
+#         print(task, f'{len(tasks)} still in queue')
+#         ps.append(Popen(task, stdout=PIPE, stderr=PIPE))
+#     else:
+#         time.sleep(0.05)
+#         new_ps = []
+#         for p in ps:
+#             if p.poll() is None:
+#                 new_ps.append(p)
+#             else:
+#                 get_output(p)
+#         ps = new_ps
+
+# NOTE VARYING: detector dark counts
+tasks = []
+
+command = ['python3', 'main_yb_yb_EG_sim.py']
+
+for i in range(50):
+    args = []
+    args.append('-dtctor_dc')
+    x = 10 + 2000*(i)
+    args.append(str(x))
+    tasks.append(command+args)
+
+parallel = 1
+ps = []
+while len(tasks) > 0 or len(ps) > 0:
+    if len(ps) < parallel and len(tasks) > 0:
+        task = tasks.pop(0)
+        print(task, f'{len(tasks)} still in queue')
+        ps.append(Popen(task, stdout=PIPE, stderr=PIPE))
+    else:
+        time.sleep(0.05)
+        new_ps = []
+        for p in ps:
+            if p.poll() is None:
+                new_ps.append(p)
+            else:
+                get_output(p)
+        ps = new_ps
+
+
+
+
 
 
 # TODO generate plots with these figures:

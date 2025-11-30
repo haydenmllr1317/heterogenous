@@ -5,10 +5,6 @@ from sequence.utils import log
 import numpy as np
 
 
-######### TODO we want to add this QFC to the BSMNode so that it can pull from its RNG.
-#########       currently, it is actually random, we want it to be pulling from the seed of BSMNode
-
-
 class QFC(Entity):
     '''
     QFC stands for Quantum Frequency Converter. QFC is a module that is intended to convert a
@@ -21,7 +17,6 @@ class QFC(Entity):
         output_wvln (int): Wavelength of photons QFC produces.
         efficiency (float): Number between 0 and 1 indicating probability that photon is converted properly.
         noise (float): Average number of noise photons generated per signal photon. Can assume <= 0.5.
-        bin_separation (int): Separation time (in ps) between photon emission bins.
     '''
     def __init__(self, name: str, timeline: Timeline, input_wavelength = None, output_wavelength = None, efficiency = None, noise = None):
         super().__init__(name, timeline)
@@ -44,21 +39,26 @@ class QFC(Entity):
         '''
         # log.logger.info(f'{self.name} received a photon')
 
+        # okay let's do a scenario tree
+        # Yb-Yb link:
+        #    - there is no noise
+        #    - we just want to make sure if it's the wrong wavelength it doens't get to detector
+        # Yb-uW link:
+        #    - there is QFC noise we add here, so we want a photon to go through (if only just noise)
+        #    - I could just have a signal bool and a noise count
+
         # NOTE don't know how to handle wrong wavelength yet
         # if photon.wavelength != self.input_wvln:
         #     raise ValueError(f'{self.name} consumes wavelength of {self.input_wvln} but received photon with wavelength of {photon.wavelength}.')
 
-        if photon.wavelength == self.input_wvln:
-            # NOTE changing this, I don't think we should check is photon is lost, pump is turned on anyway
-            # if self.owner.get_generator().random() >= photon.loss:
-            #     photon.loss = 0 # reset loss to zero as we have already evaluated all old origins of loss
-            #     photon.wavelength = self.output_wvln # actually convert the wavelength 
-            #     self.send_to_receiver(photon)
-            # else:
-            #     log.logger.info(f'Photon lost before {self.name}.')
-            self.send_to_receiver(photon)
-        else:
-            log.logger.warning(f'Attempted to convert {photon.wavelength}nm photon in a QFC tuned to {self.input_wvln}nm.')
+        # Yb atom decayed incorrectly
+        if photon.wavelength != self.input_wvln:
+            photon.contains_signal = False
+        
+        photon.wavelength = self.output_wvln # set photon wavelength
+
+        photon.add_loss(1-self.efficiency) # e
+        self.send_to_receiver(photon)
 
 
 
@@ -72,16 +72,13 @@ class QFC(Entity):
         """
 
         # noise is in range [0,1), so can just use random number generator
-
-        photon.add_loss(1-self.efficiency) # add QFC loss
-
         # if self.timeline.quantum_manager.states[photon.quantum_state].state[0] != np.complex128(0.7071067811865476+0j):
         #     raise ValueError('Unprepared state is getting to QFC.')
 
         self.owner.conversion_counter += 1
         if self.get_generator().random() < self.noise: # noise photon added
             self.owner.qfc_noise_counter += 1
-            photon.add_mode_count(1)
+            photon.qfc_noise_count = 1
             self._receivers[0].get(photon)
         else: # no noise photon added
             self._receivers[0].get(photon)

@@ -135,6 +135,7 @@ class YbRouterNetTopo(RouterNetTopo):
                 except exception.NetworkXNoPath:
                     pass
         
+        ''' for now I am commenting this out
         # update the classical delay and the distance
         def classical_delay(distance: float, hop_count: int) -> float:
             """Model the classical delay as a function of distance and hop count
@@ -148,3 +149,5 @@ class YbRouterNetTopo(RouterNetTopo):
             cc.delay = classical_delay(length, hop_count)
             cc.distance = length   # not important
             # print(f'{path}: {cc.delay/1e6}us')
+
+        '''

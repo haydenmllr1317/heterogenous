@@ -5,6 +5,7 @@ from sequence.utils import log
 from math import sqrt
 from sequence.kernel.process import Process
 from sequence.kernel.event import Event
+from math import e
 
 class HetRequestApp(RequestApp):
     def __init__(self, node):
@@ -39,13 +40,26 @@ class HetRequestApp(RequestApp):
         
         other_memory = self.node.timeline.get_entity_by_name(info.remote_memo)
         
-        time_to_measurement_results = self.node.timeline.now() + max(info.memory.readout_time, other_memory.readout_time) # current time + time it takes to measure
+        time_to_measurement_results = self.node.timeline.now() + max(info.memory.measurement_time, other_memory.measurement_time) # current time + time it takes to measure
 
         if self.basis == "X":
-            time_to_measurement_results +=  info.memory.raman_half_pi_pulse_time # TODO change for heterogenous network
+            to_x_basis_time = max(info.memory.to_x_basis_time, other_memory.to_x_basis_time)
+            time_to_measurement_results +=  to_x_basis_time
 
         self.time_in_trap = time_to_measurement_results - self.last_trap_time
 
+        if self.node.memo_type == "uW":
+            time_since_excite = self.node.timeline.now() - info.memory.time_after_excitement
+            if self.basis == "X":
+                readout_time = info.memory.measurement_time + info.memory.to_x_basis_time
+            else:
+                readout_time = info.memory.measurement_time
+            time_since_excite += readout_time
+            decohere_prob = (1-e**(-time_since_excite/info.memory.coherence_time))
+            if self.node.get_generator().random() < decohere_prob: # decohered during roundtrip time
+                log.logger.warning('Transmon decohered during round trip time.')
+                info.memory.update_state(info.memory._zero_ket)
+                other_memory.update_state(other_memory._plus_state)
 
         if info.index in self.memo_to_reservation:
             reservation = self.memo_to_reservation[info.index]
@@ -95,7 +109,7 @@ class HetRequestApp(RequestApp):
 
         # remove detector dark counts so we can finish simulation as we have succesfully heralded entanglement
         for event in self.node.timeline.events:
-            if event.process.activation in ['add_dark_count', 'record_detection']:
+            if event.process.activation in ['add_dark_count', 'record_detection', 'lose_atom']:
                 self.node.timeline.remove_event(event)
 
 

@@ -19,12 +19,8 @@ class HetEntanglementGenerationMessage(EntanglementGenerationMessage):
             self.click_type = None # never the case for our het networks
 
         fields = {
-            GenerationMsgType.NEGOTIATE: ['emit_delay'],
-            GenerationMsgType.NEGOTIATE: ['bin_width'],
-            GenerationMsgType.NEGOTIATE: ['bin_separation'],
-            GenerationMsgType.NEGOTIATE_ACK: ['min_time'],
-            GenerationMsgType.NEGOTIATE_ACK: ['total_bin_separation'],
-            GenerationMsgType.NEGOTIATE_ACK: ['total_bin_width']
+            GenerationMsgType.NEGOTIATE: ['emit_delay', 'bin_width', 'bin_separation'],
+            GenerationMsgType.NEGOTIATE_ACK: ['min_time', 'total_bin_separation', 'total_bin_width']
         }
 
         if msg_type in fields:

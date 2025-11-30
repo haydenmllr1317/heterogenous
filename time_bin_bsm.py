@@ -147,12 +147,10 @@ class HetTimeBinBSM(BSM):
 
         self.measurement = measurement # adding this for tracking weird noise issues
 
-        # add noise if needed
-        if photon.mode_count == 0:
-            raise ValueError(f"Shouldn't have zero photons in {photon.name} mode.")
-        elif photon.mode_count == 1: # only signal in mode
+        # add QFC noise if needed
+        if photon.qfc_noise_count == 0: # only signal in mode
             pass
-        elif photon.mode_count > 1: # nosie photon in mode
+        elif photon.qfc_noise_count == 1: # noise photon in mode
             self.owner.noise_to_detector += 1
             noise_bin = self.get_generator().choice([0,1]) # 0 for early, 1 for late
             noise_time = self.owner.timeline.now() + (noise_bin*self.bin_separation) + round(self.get_generator().random() * self.bin_width) # where within appropriate detection window noise is added
@@ -160,15 +158,40 @@ class HetTimeBinBSM(BSM):
             process_noise = Process(self.detectors[detector_num_noise], "get", [], noise_get_args)
             event_noise = Event(noise_time, process_noise)
             self.timeline.schedule(event_noise)
+        else:
+            raise ValueError('We only consider up to 1 QFC noise photon.')
+
+        # add transducer noise
+        for i in range(photon.transducer_noise_count):
+            photon_odds = self.get_generator().random()
+            if photon_odds >= photon.loss: # photon survives to detector
+                self.owner.noise_to_detector += 1
+                noise_bin = self.get_generator().choice([0,1])
+                noise_time = self.owner.timeline.now() + (noise_bin*self.bin_separation) + round(self.get_generator().random() * self.bin_width) # where within appropriate detection window noise is added
+                noise_get_args = {'photon_type': 0} # noisy photon
+                process_noise = Process(self.detectors[detector_num_noise], "get", [], noise_get_args)
+                event_noise = Event(noise_time, process_noise)
+                self.timeline.schedule(event_noise)
 
         # add signal
-        photon_odds = self.get_generator().random()
-        if photon_odds >= photon.loss: # photon survives to detector
-            signal_get_args = {'photon_type': 1} # signal photon
-            signal_time = self.timeline.now() + (measurement * self.bin_separation) + round(self.get_generator().random() * self.bin_width) # where within appropriate detrection window noise is added
-            process_signal = Process(self.detectors[detector_num_signal], "get", [], signal_get_args)
-            event_signal = Event(signal_time, process_signal)
-            self.timeline.schedule(event_signal)
+        if photon.contains_signal: # photon object is not solely noise
+            photon_odds = self.get_generator().random()
+            if (photon_odds >= photon.loss): # now: photon must survive to detector
+                if not photon.only_early: # no decoherence during generaiton
+                    signal_get_args = {'photon_type': 1} # signal photon
+                    signal_time = self.timeline.now() + (measurement * self.bin_separation) + round(self.get_generator().random() * self.bin_width) # where within appropriate detrection window noise is added
+                    process_signal = Process(self.detectors[detector_num_signal], "get", [], signal_get_args)
+                    event_signal = Event(signal_time, process_signal)
+                    self.timeline.schedule(event_signal)
+                else: # photon decohered during generation, only early pulse
+                    if measurement == 0:
+                        signal_get_args = {'photon_type': 3} # partial signal photon
+                        signal_time = self.timeline.now() + (measurement * self.bin_separation) + round(self.get_generator().random() * self.bin_width) # where within appropriate detrection window noise is added
+                        process_signal = Process(self.detectors[detector_num_signal], "get", [], signal_get_args)
+                        event_signal = Event(signal_time, process_signal)
+                        self.timeline.schedule(event_signal)
+
+
                 
 
     def trigger(self, detector: Detector, info: Dict[str, Any]):

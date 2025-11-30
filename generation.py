@@ -88,24 +88,26 @@ class HetEGA(EntanglementGenerationA):
             # how long memory has already been in trap:
             time_in_trap = self.owner.timeline.now() - self.owner.app.last_trap_time
             # check if we need to retrap (and do so if necessary):
-            if (self.memory.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or (self.memory.wavelength == 1389 and (self.memory.attempts % self.memory.retrap_num) == 1):
-                self.memory.need_to_retrap = True
-                added_delay = self.memory.retrap_time
-                self.emit_delay += added_delay
-                for event in self.scheduled_events:
-                    if event.process.activation == 'lose_atom':
-                        self.owner.timeline.remove_event(event)
-                self.owner.app.last_trap_time = self.owner.timeline.now()
+            if self.owner.memo_type == 'Yb':
+                if (self.memory.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or (self.memory.wavelength == 1389 and (self.memory.attempts % self.memory.retrap_num) == 1):
+                    if time_in_trap >= self.memory.lifetime_reload_time: raise ValueError('Too long')
+                    self.memory.need_to_retrap = True
+                    added_delay = self.memory.retrap_time
+                    self.emit_delay += added_delay
+                    for event in self.scheduled_events:
+                        if event.process.activation == 'lose_atom':
+                            self.owner.timeline.remove_event(event)
+                    self.owner.app.last_trap_time = self.owner.timeline.now()
 
-                # schedule next atom loss event
-                assert self.memory.atom_lifetime > 0, f"Attempting to schedule atom loss for {self.memory.name} with 0 atom lifetime."
-                time_to_next = int(self.owner.get_generator().exponential(self.memory.atom_lifetime) * 1e12) # TODO double check this is correct, this seems wrong
-                time = time_to_next + self.owner.timeline.now()
-                process = Process(self.memory, "lose_atom", [])
-                event = Event(time, process)
-                self.owner.timeline.schedule(event)
-                self.scheduled_events.append(event)
-            
+                    # schedule next atom loss event
+                    assert self.memory.atom_lifetime > 0, f"Attempting to schedule atom loss for {self.memory.name} with 0 atom lifetime."
+                    time_to_next = int(self.owner.get_generator().exponential(scale=self.memory.atom_lifetime))
+                    time = time_to_next + self.owner.timeline.now()
+                    process = Process(self.memory, "lose_atom", [])
+                    event = Event(time, process)
+                    self.owner.timeline.schedule(event)
+                    self.scheduled_events.append(event)
+                
             bin_width = self.memory.bin_width
             bin_separation = self.memory.bin_separation
             message = HetEntanglementGenerationMessage(GenerationMsgType.NEGOTIATE, self.remote_protocol_name, BARRET_KOK,
@@ -163,10 +165,8 @@ class HetEGA(EntanglementGenerationA):
                         _set_state_with_fidelity([self.memory.qstate_key, other_key], self._psi_plus, 1.0, self.owner.get_generator(), qm) # NOTE hardcoded fidelity to 1.0
                     else:                         # psi-
                         _set_state_with_fidelity([self.memory.qstate_key, other_key], self._psi_minus, 1.0, self.owner.get_generator(), qm) # NOTE hardcoded fidelity to 1.0
-                elif (self.early_click_types[0]==2) or (self.late_click_types[0]==2):
-                    log.logger.warning('False positive entanglement heralded with dark count involved.')
                 else:
-                    log.logger.warning('False positive entanglement heralded.')
+                    log.logger.warning(f'False positive entanglement heralded with sources {self.early_click_types[0]},{self.late_click_types[0]}.')
                 # TODO really be conscientious about how we maintaing quantum keys when entanglement is faked
                 # NOTE unsure if this is right, at some point must be thoughtful about how we hold the the states 
                 # else: # the clicks aren't BOTH signals
@@ -196,8 +196,6 @@ class HetEGA(EntanglementGenerationA):
             May change state of attached memory.
             May cause attached memory to emit photon.
         """
-
-        # TODO do I need to fix this to be the longer of the two atoms' timings?
         
         process = Process(self.memory, "excite", [self.middle])
         time = self.memory.initialize_cool_prep() + self.memory.excite_pulse_time
@@ -245,23 +243,25 @@ class HetEGA(EntanglementGenerationA):
             # how long memory has already been in trap:
             time_in_trap = self.owner.timeline.now() - self.owner.app.last_trap_time
             # check if we need to retrap (and do so if necessary):
-            if (self.memory.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or (self.memory.wavelength == 1389 and (self.memory.attempts % self.memory.retrap_num) == 1):
-                self.memory.need_to_retrap = True
-                added_delay = self.memory.retrap_time
-                self.emit_delay += added_delay
-                for event in self.scheduled_events:
-                    if event.process.activation == 'lose_atom':
-                        self.owner.timeline.remove_event(event)
-                self.owner.app.last_trap_time = self.owner.timeline.now()
+            if self.owner.memo_type == "Yb":
+                if (self.memory.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or (self.memory.wavelength == 1389 and (self.memory.attempts % self.memory.retrap_num) == 1):
+                    if time_in_trap >= self.memory.lifetime_reload_time: raise ValueError('Too long')
+                    self.memory.need_to_retrap = True
+                    added_delay = self.memory.retrap_time
+                    self.emit_delay += added_delay
+                    for event in self.scheduled_events:
+                        if event.process.activation == 'lose_atom':
+                            self.owner.timeline.remove_event(event)
+                    self.owner.app.last_trap_time = self.owner.timeline.now()
 
-                # schedule next atom loss event
-                assert self.memory.atom_lifetime > 0, f"Attempting to schedule atom loss for {self.memory.name} with 0 atom lifetime."
-                time_to_next = int(self.owner.get_generator().exponential(self.memory.atom_lifetime) * 1e12) # TODO double check this is correct, this seems wrong
-                time = time_to_next + self.owner.timeline.now()
-                process = Process(self.memory, "lose_atom", [])
-                event = Event(time, process)
-                self.owner.timeline.schedule(event)
-                self.scheduled_events.append(event)
+                    # schedule next atom loss event
+                    assert self.memory.atom_lifetime > 0, f"Attempting to schedule atom loss for {self.memory.name} with 0 atom lifetime."
+                    time_to_next = int(self.owner.get_generator().exponential(scale=self.memory.atom_lifetime))
+                    time = time_to_next + self.owner.timeline.now()
+                    process = Process(self.memory, "lose_atom", [])
+                    event = Event(time, process)
+                    self.owner.timeline.schedule(event)
+                    self.scheduled_events.append(event)
 
             # get max emit delay
             total_emit_delay = max(other_emit_delay, self.emit_delay) # largest possible time for emission
@@ -273,11 +273,13 @@ class HetEGA(EntanglementGenerationA):
             emit_time = self.owner.schedule_qubit(self.middle, min_time + total_emit_delay)
 
             total_bin_separation = max(self.memory.bin_separation, msg.bin_separation)
-            total_bin_width = max(self.meemory.bin_width, msg.bin_width)
+            total_bin_width = max(self.memory.bin_width, msg.bin_width)
+            self.memory.bin_separation = total_bin_separation # set memory to max
+            self.memory.bin_width = total_bin_width           # set memory to max
 
             # create bins
             self.expected_time = emit_time + self.qc_delay
-            self.early_bin = [emit_time + self.qc_delay, (emit_time + self.qc_delay + total_bin_width)]
+            self.early_bin = [self.expected_time, (self.expected_time + total_bin_width)]
             self.late_bin = [self.early_bin[0] + total_bin_separation, (self.early_bin[1] + total_bin_separation)]
            
             # schedule start of emission process
@@ -307,6 +309,9 @@ class HetEGA(EntanglementGenerationA):
 
             assert msg.total_bin_width >= self.memory.bin_width, \
                 "Protocol bin width must be >= each memory bin width {} {} {}".format(msg.total_bin_width, self.memory.bin_width, self.owner.timeline.now())
+            
+            self.memory.bin_separation = msg.total_bin_separation
+            self.memory.bin_width = msg.total_bin_width
 
             # NOTE unsure if we need this, I don't think it could ever occur
             if msg.emit_time < self.owner.timeline.now():  # emit time calculated by the non-primary node
@@ -352,6 +357,11 @@ class HetEGA(EntanglementGenerationA):
                 self.detector_resolution = resolution
                 self.update_bins(resolution)
 
+            if click_type == 2:
+                log.logger.info('Dark count')
+            elif click_type == 3:
+                raise ValueError('shoudnt have decohere for yb')
+
             # early time bin
             if self.early_bin[0] <= time <= self.early_bin[1]:
                 self.early_click_types.append(click_type)
@@ -373,7 +383,7 @@ class HetEGA(EntanglementGenerationA):
         self.memory.fidelity = self.memory.raw_fidelity
 
         for event in self.scheduled_events:
-            if event.process.activation == 'lose_atom' and event.time > (self.owner.timeline.now() + self.memory.readout_time):
+            if event.process.activation == 'lose_atom' and event.time > (self.owner.timeline.now() + self.memory.measurement_time):
                 self.owner.timeline.remove_event(event)
 
         self.update_resource_manager(self.memory, MemoryInfo.ENTANGLED)

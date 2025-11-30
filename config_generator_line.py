@@ -35,7 +35,7 @@ output_dict = {}
 
 output_dict[Topology.ALL_TEMPLATES] = \
     {
-        "yb_yb_time_bin":
+        "het_time_bin":
             {
                 "encoding_type": "het_time_bin"
             },
@@ -56,7 +56,7 @@ bsm_names = ["BSM_{}_{}".format(i, i + 1)
 bsm_nodes = [{Topology.NAME: bsm_name,
               Topology.TYPE: RouterNetTopo.BSM_NODE,
               Topology.SEED: i,
-              RouterNetTopo.TEMPLATE: "yb_yb_time_bin"}
+              RouterNetTopo.TEMPLATE: "het_time_bin"}
              for i, bsm_name in enumerate(bsm_names)]
 
 nodes += bsm_nodes
