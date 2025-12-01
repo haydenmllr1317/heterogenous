@@ -22,19 +22,22 @@ from memory import MemoryArray
 from sequence.constants import MILLISECOND, SECOND
 from apps import HetRequestApp
 
+# previous params were pce=0.5,qfc_noise=0.005, detector_efficienct=0.85, transducer_noise = 0.047, transducer_eff=0.6
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-pce', '--photoncollectionefficiency', type=float, default=0.5, help='efficiency of photon collection into fiber')
+    parser.add_argument('-pce', '--photoncollectionefficiency', type=float, default=1.0, help='efficiency of photon collection into fiber')
     parser.add_argument('-ybwavelength', '--ybphotonwavelength', type=int, default=1389, help='wavelength of emmitted photons from Yb atom')
-    parser.add_argument('-n', '--numtrials', type=int, default=1000, help="number of entangled pairs we generated")
-    parser.add_argument('-dtctor_dc', '--detectordarkcount', type=float, default=11.0, help="Dark count rate, in Hz, for the detector in the BSM.")
-    parser.add_argument('-dtctor_eff', '--detectorefficiency', type=float, default=0.85, help="Efficiency for the detector in the BSM.") # default should be 0.85 according to Joaquin
+    parser.add_argument('-n', '--numtrials', type=int, default=50, help="number of entangled pairs we generated")
+    parser.add_argument('-dtctor_dc', '--detectordarkcount', type=float, default=0.0, help="Dark count rate, in Hz, for the detector in the BSM.")
+    parser.add_argument('-dtctor_eff', '--detectorefficiency', type=float, default=1.0, help="Efficiency for the detector in the BSM.") # default should be 0.85 according to Joaquin
     parser.add_argument('-bsm_wvln', '--bsm_operating_wavelength', type=int, default=746, help="Photon wavelength BSM ideally operates at.")
-    parser.add_argument('-qfc_eff', '--qfc_efficiency', type=float, default=0.99, help="Efficiency of our quantum frequency converters.")
-    parser.add_argument('-qfc_noise', '--qfc_noise', type=float, default=0.005, help="Noise, in number of noise photons per signal photon, in our QFC.")
-    parser.add_argument('-uw_noise', '--transducer_noise', type=float, default=0.047, help="Noise, in number of photons added to signal during MO transduction.")
-    parser.add_argument('-uw_efficiency', '--transducer_efficiency', type=float, default=0.6, help= "Efficiency of uW node, aka probability signal gets converted.")
-    parser.add_argument('-uw_coherence', '--transmon_coherence_time', type=int, default=500_000_000, help= "T1 coherence time of transmon.")
+    parser.add_argument('-qfc_eff', '--qfc_efficiency', type=float, default=1.0, help="Efficiency of our quantum frequency converters.")
+    parser.add_argument('-qfc_noise', '--qfc_noise', type=float, default=0.0, help="Noise, in number of noise photons per signal photon, in our QFC.")
+    parser.add_argument('-uw_noise', '--transducer_noise', type=float, default=0.0, help="Noise, in number of photons added to signal during MO transduction.")
+    parser.add_argument('-uw_efficiency', '--transducer_efficiency', type=float, default=1.0, help= "Efficiency of uW node, aka probability signal gets converted.")
+    parser.add_argument('-uw_coherence', '--transmon_coherence_time', type=int, default=250_000_000, help= "T1 coherence time of transmon.")
+    # sim 6ms, and sim 0.25 ms
 
     # take all of our args and make variables of them
     args = parser.parse_args()
@@ -51,7 +54,7 @@ def main():
     transmon_coherence = args.transmon_coherence_time
 
     # network topology json reference and build
-    network_config = 'config/linear_het.json'
+    network_config = 'config/line_3_het.json'
     network_topo = YbRouterNetTopo(network_config)
 
     tl = network_topo.get_timeline()
@@ -73,22 +76,23 @@ def main():
         qfc0.efficiency = qfc_eff
         qfc0.noise = qfc_noise
         qfc1 = bsm_node.get_components_by_type("QFC")[1]
-        qfc1.input_wvln = 1389
+        qfc1.input_wvln = yb_wavelength
         qfc1.output_wvln = bsm_operating_wavelength # TODO make this come out of the json file
         qfc1.efficiency = qfc_eff
         qfc1.noise = qfc_noise
 
 
     #### logging added here ####
-    log_filename = f'tmp/data/qfc_noise/qfc_noise={qfc_noise}.log'
+    # log_filename = f'tmp/data/qfc_noise/qfc_noise={qfc_noise}.log'
     # log_filename = f'tmp/data/qfc_eff/qfc_eff={qfc_eff}.log'
     # log_filename = f'tmp/data/uw_eff/uw_eff={uW_efficiency}.log'
     # log_filename = f'tmp/data/uw_noise/uw_noise={uW_noise}.log'
-    # log_filename = f'tmp/data/coherence/coherence={transmon_coherence}.log'
+    log_filename = f'tmp/data/ideal_coherence/coherence={transmon_coherence}_{n}.log'
     # log_filename = 'tmp/checking_het.log'
+    # log_filename = 'tmp/big_net_checking_500us_real.log'
     log.set_logger(__name__, tl, log_filename)
     log.set_logger_level('WARNING')
-    log.track_module('main_yb_uW_EG_sim')
+    log.track_module('main_het_net_sim')
     log.track_module('generation')
     log.track_module('bsm')
     log.track_module('detector')
@@ -143,7 +147,7 @@ def main():
 
     # TEMPORARY SOLUTION
     node_init = network_topo.get_nodes_by_type(YbRouterNetTopo.QUANTUM_ROUTER)[0]
-    node_resp = network_topo.get_nodes_by_type(YbRouterNetTopo.QUANTUM_ROUTER)[1]
+    node_resp = network_topo.get_nodes_by_type(YbRouterNetTopo.QUANTUM_ROUTER)[2]
     
 
     for i in range(n):
@@ -157,21 +161,18 @@ def main():
         starting_attempts = node_init.get_components_by_type(MemoryArray)[0].memories[0].attempts
         for node in network_topo.get_nodes_by_type(YbRouterNetTopo.QUANTUM_ROUTER):
             node.app.last_trap_time = beginning - node.app.time_in_trap # sets last time of trapping to time_in_trap before current time
-        name_to_app[node_init.name].start(node_resp.name, beginning + delta, beginning + 10000*SECOND, 1, 0.1, basis) # requesting 1 pair with min fid of 0.1
+        name_to_app[node_init.name].start(node_resp.name, beginning + delta, beginning + 20*SECOND, 1, 0.1, basis) # requesting 1 pair with min fid of 0.1
         name_to_app[node_resp.name].basis = basis
         log.logger.warning("Starting EG attempt at " + str(tl.time) + '.')
         tl.run()
 
         taken_time = node_init.app.entanglement_time - beginning
-        finishing_attempts = node_init.get_components_by_type(MemoryArray)[0].memories[0].attempts
-        traversed_attempts = finishing_attempts - starting_attempts
         # net_handshake_time = 31_000_000 + 45_000_000*traversed_attempts # 31us is for rule loading, 45us is for protocol handshakes
         # actual_time = (taken_time - net_handshake_time)*(10**-12)
         actual_time = taken_time*(10**-12)
         if actual_time < 0:
             raise ValueError('neg actual time')
         log.logger.warning(f'Entanglement num {i+1} completed in {actual_time} seconds.')
-        log.logger.warning(f'Entanglement num {i+1} took {traversed_attempts} attempts.')
         total_time += actual_time
 
 
@@ -179,8 +180,10 @@ def main():
     readout_fidelity1 = node_resp.get_components_by_type(MemoryArray)[0].memories[0].measurement_fidelity
     fid = node_init.app.get_fidelity(readout_fidelity0*readout_fidelity1)
 
+    # NOTE NOTE NOTE this sim seems to go on until stop time even after swapping is done
+
     # logging
-    log.logger.warning(f'qfc noise:{qfc_noise}')
+    log.logger.warning(f'coherence:{transmon_coherence}')
     log.logger.warning(f'After {n} entanglement attempts, calculated fidelity ={fid}')
     log.logger.warning(f'Average ent time is ~{total_time/n}')
     log.logger.warning(f'{n} entanglement pairs were generated after {node_init.get_components_by_type(MemoryArray)[0].memories[0].attempts} attempts.')

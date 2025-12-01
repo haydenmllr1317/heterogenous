@@ -24,9 +24,9 @@ from apps import HetRequestApp
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-pce', '--photoncollectionefficiency', type=float, default=0.5, help='efficiency of photon collection into fiber')
+    parser.add_argument('-pce', '--photoncollectionefficiency', type=float, default=0.05, help='efficiency of photon collection into fiber')
     parser.add_argument('-wavelength', '--photonwavelength', type=int, default=1389, help='wavelength of emmitted photons')
-    parser.add_argument('-n', '--numtrials', type=int, default=1000, help="number of entangled pairs we generated")
+    parser.add_argument('-n', '--numtrials', type=int, default=100, help="number of entangled pairs we generated")
     parser.add_argument('-dtctor_dc', '--detectordarkcount', type=float, default=11.0, help="Dark count rate, in Hz, for the detector in the BSM.")
     parser.add_argument('-dtctor_eff', '--detectorefficiency', type=float, default=0.85, help="Efficiency for the detector in the BSM.") # default should be 0.85 according to Joaquin
     parser.add_argument('-bsm_wvln', '--bsm_operating_wavelength', type=int, default=1389, help="Photon wavelength BSM ideally operates at.")
@@ -79,9 +79,10 @@ def main():
 
     #### logging added here ####
     # log_filename = f'pce={photon_collection_efficiency},lambda={wavelength},num_trials={n}.log'
-    # log_filename = f'tmp/data/f(reload)/reload={reload_count}.log'
+    # log_filename = f'tmp/data/reload/reload={reload_count}.log'
     # log_filename = f'tmp/data/binwidth/width={bin_width}.log'
-    log_filename = f'tmp/data/dc/dc={detector_dark_count}.log'
+    log_filename = f'tmp/data/pce/pce={photon_collection_efficiency}.log'
+    # log_filename = f'tmp/data/dc/dc={detector_dark_count}.log'
     # log_filename = 'tmp/checking_yb.log'
     log.set_logger(__name__, tl, log_filename)
     log.set_logger_level('WARNING')
@@ -141,7 +142,7 @@ def main():
         starting_attempts = node_init.get_components_by_type(MemoryArray)[0].memories[0].attempts
         for node in network_topo.get_nodes_by_type(YbRouterNetTopo.QUANTUM_ROUTER):
             node.app.last_trap_time = beginning - node.app.time_in_trap # sets last time of trapping to time_in_trap before current time
-        name_to_app[node_init.name].start(node_resp.name, beginning + delta, beginning + 20*SECOND, 1, 0.1, basis) # requesting 1 pair with min fid of 0.1
+        name_to_app[node_init.name].start(node_resp.name, beginning + delta, beginning + 10000*SECOND, 1, 0.1, basis) # requesting 1 pair with min fid of 0.1
         name_to_app[node_resp.name].basis = basis
         log.logger.warning("Starting EG attempt at " + str(tl.time) + '.')
         tl.run()
@@ -163,7 +164,7 @@ def main():
     fid = node_init.app.get_fidelity(readout_fidelity0*readout_fidelity1)
 
     # logging
-    log.logger.warning(f'DC:{detector_dark_count}')
+    log.logger.warning(f'pce:{photon_collection_efficiency}')
     log.logger.warning(f'After {n} entanglement attempts, calculated fidelity ={fid}')
     log.logger.warning(f'Average ent time is ~{total_time/n}')
     log.logger.warning(f'{n} entanglement pairs were generated after {node_init.get_components_by_type(MemoryArray)[0].memories[0].attempts} attempts.')

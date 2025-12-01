@@ -58,7 +58,7 @@ def eg_rule_action2(memories_info: List["MemoryInfo"], args: Arguments) -> Tuple
     memories = [info.memory for info in memories_info]
     memory = memories[0]
     memo_type = args["memo_type"]
-    if memo_type == "Yb":
+    if memo_type == "Yb" or memo_type == "uW":
         protocol = HetEGA(None, "EGTB" + "." + memory.name, mid, path[index+1], memory)
     else:
         protocol = EntanglementGenerationA(None, "EGA." + memory.name, mid, path[index + 1], memory)

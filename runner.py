@@ -103,47 +103,16 @@ while len(tasks) > 0 or len(ps) > 0:
         ps = new_ps
 '''
         
-'''
-# NOTE VARYING: RETRAP NUM
-tasks = []
 
-command = ['python3', 'main_yb_yb_EG_sim.py']
-
-for i in range(49):
-    args = []
-    args.append('-reloadcount')
-    x = 5*(i) + 10
-    args.append(str(x))
-    tasks.append(command+args)
-
-parallel = 10
-ps = []
-while len(tasks) > 0 or len(ps) > 0:
-    if len(ps) < parallel and len(tasks) > 0:
-        task = tasks.pop(0)
-        print(task, f'{len(tasks)} still in queue')
-        ps.append(Popen(task, stdout=PIPE, stderr=PIPE))
-    else:
-        time.sleep(0.05)
-        new_ps = []
-        for p in ps:
-            if p.poll() is None:
-                new_ps.append(p)
-            else:
-                get_output(p)
-        ps = new_ps
-'''
-
-
-# # NOTE VARYING: BIN WIDTH
+# # NOTE VARYING: RETRAP NUM
 # tasks = []
 
 # command = ['python3', 'main_yb_yb_EG_sim.py']
 
-# for i in range(49):
+# for i in range(50):
 #     args = []
-#     args.append('-bwidth')
-#     x = 500_000 + 20_000*(i)
+#     args.append('-reloadcount')
+#     x = 5*(i+1)
 #     args.append(str(x))
 #     tasks.append(command+args)
 
@@ -164,19 +133,231 @@ while len(tasks) > 0 or len(ps) > 0:
 #                 get_output(p)
 #         ps = new_ps
 
-# NOTE VARYING: detector dark counts
+
+
+# # NOTE VARYING: BIN WIDTH
+# tasks = []
+
+# command = ['python3', 'main_yb_yb_EG_sim.py']
+
+# for i in range(25):
+#     args = []
+#     args.append('-bwidth')
+#     x = 200_000 + 40_000*(i)
+#     args.append(str(x))
+#     tasks.append(command+args)
+
+# parallel = 10
+# ps = []
+# while len(tasks) > 0 or len(ps) > 0:
+#     if len(ps) < parallel and len(tasks) > 0:
+#         task = tasks.pop(0)
+#         print(task, f'{len(tasks)} still in queue')
+#         ps.append(Popen(task, stdout=PIPE, stderr=PIPE))
+#     else:
+#         time.sleep(0.05)
+#         new_ps = []
+#         for p in ps:
+#             if p.poll() is None:
+#                 new_ps.append(p)
+#             else:
+#                 get_output(p)
+#         ps = new_ps
+
+# # NOTE VARYING: photon collection efficiency
+# tasks = []
+
+# command = ['python3', 'main_yb_yb_EG_sim.py']
+
+# for i in range(7):
+#     args = []
+#     args.append('-pce')
+#     x = 0.1*(i+1)
+#     args.append(str(x))
+#     tasks.append(command+args)
+
+# parallel = 10
+# ps = []
+# while len(tasks) > 0 or len(ps) > 0:
+#     if len(ps) < parallel and len(tasks) > 0:
+#         task = tasks.pop(0)
+#         print(task, f'{len(tasks)} still in queue')
+#         ps.append(Popen(task, stdout=PIPE, stderr=PIPE))
+#     else:
+#         time.sleep(0.05)
+#         new_ps = []
+#         for p in ps:
+#             if p.poll() is None:
+#                 new_ps.append(p)
+#             else:
+#                 get_output(p)
+#         ps = new_ps
+
+
+# # NOTE VARYING: QFC_EFF
+# tasks = []
+
+# command = ['python3', 'main_yb_uW_EG_sim.py']
+
+# for i in range(21):
+#     args = []
+#     args.append('-qfc_eff')
+#     x = 0.2 + (0.04*i)
+#     args.append(str(x))
+#     tasks.append(command+args)
+
+# parallel = 10
+# ps = []
+# while len(tasks) > 0 or len(ps) > 0:
+#     if len(ps) < parallel and len(tasks) > 0:
+#         task = tasks.pop(0)
+#         print(task, f'{len(tasks)} still in queue')
+#         ps.append(Popen(task, stdout=PIPE, stderr=PIPE))
+#     else:
+#         time.sleep(0.05)
+#         new_ps = []
+#         for p in ps:
+#             if p.poll() is None:
+#                 new_ps.append(p)
+#             else:
+#                 get_output(p)
+#         ps = new_ps
+
+
+# # NOTE VARYING: QFC_NOISE
+# tasks = []
+
+# command = ['python3', 'main_yb_uW_EG_sim.py']
+
+# for i in range(30):
+#     args = []
+#     args.append('-qfc_noise')
+#     x = 0.001 + 0.002*(i)
+#     args.append(str(x))
+#     tasks.append(command+args)
+
+# parallel = 10
+# ps = []
+# while len(tasks) > 0 or len(ps) > 0:
+#     if len(ps) < parallel and len(tasks) > 0:
+#         task = tasks.pop(0)
+#         print(task, f'{len(tasks)} still in queue')
+#         ps.append(Popen(task, stdout=PIPE, stderr=PIPE))
+#     else:
+#         time.sleep(0.05)
+#         new_ps = []
+#         for p in ps:
+#             if p.poll() is None:
+#                 new_ps.append(p)
+#             else:
+#                 get_output(p)
+#         ps = new_ps
+
+# # # NOTE VARYING: uW_NOISE
+# tasks = []
+
+# command = ['python3', 'main_yb_uW_EG_sim.py']
+
+# for i in range(20):
+#     args = []
+#     args.append('-uw_noise')
+#     x = 0.005*(i+1)
+#     args.append(str(x))
+#     tasks.append(command+args)
+
+# parallel = 10
+# ps = []
+# while len(tasks) > 0 or len(ps) > 0:
+#     if len(ps) < parallel and len(tasks) > 0:
+#         task = tasks.pop(0)
+#         print(task, f'{len(tasks)} still in queue')
+#         ps.append(Popen(task, stdout=PIPE, stderr=PIPE))
+#     else:
+#         time.sleep(0.05)
+#         new_ps = []
+#         for p in ps:
+#             if p.poll() is None:
+#                 new_ps.append(p)
+#             else:
+#                 get_output(p)
+#         ps = new_ps
+
+
+# # NOTE VARYING: uW efficiency
+# tasks = []
+
+# command = ['python3', 'main_yb_uW_EG_sim.py']
+
+# for i in range(20):
+#     args = []
+#     args.append('-uw_efficiency')
+#     x = 0.05*(i+1)
+#     args.append(str(x))
+#     tasks.append(command+args)
+
+# parallel = 10
+# ps = []
+# while len(tasks) > 0 or len(ps) > 0:
+#     if len(ps) < parallel and len(tasks) > 0:
+#         task = tasks.pop(0)
+#         print(task, f'{len(tasks)} still in queue')
+#         ps.append(Popen(task, stdout=PIPE, stderr=PIPE))
+#     else:
+#         time.sleep(0.05)
+#         new_ps = []
+#         for p in ps:
+#             if p.poll() is None:
+#                 new_ps.append(p)
+#             else:
+#                 get_output(p)
+#         ps = new_ps
+
+# # NOTE VARYING: transmon coherence
+# tasks = []
+
+# command = ['python3', 'main_yb_uW_EG_sim.py']
+
+# for i in range(20):
+#     args = []
+#     args.append('-uw_coherence')
+#     x = 10_000_000 + 30_000_000*(i+1)
+#     args.append(str(x))
+#     tasks.append(command+args)
+
+# parallel = 10
+# ps = []
+# while len(tasks) > 0 or len(ps) > 0:
+#     if len(ps) < parallel and len(tasks) > 0:
+#         task = tasks.pop(0)
+#         print(task, f'{len(tasks)} still in queue')
+#         ps.append(Popen(task, stdout=PIPE, stderr=PIPE))
+#     else:
+#         time.sleep(0.05)
+#         new_ps = []
+#         for p in ps:
+#             if p.poll() is None:
+#                 new_ps.append(p)
+#             else:
+#                 get_output(p)
+#         ps = new_ps
+
+
+
+# NOTE VARYING: coherence time linear network
 tasks = []
 
-command = ['python3', 'main_yb_yb_EG_sim.py']
+command = ['python3', 'main_het_net_sim.py']
 
-for i in range(50):
+multiplier = [25, 50, 100, 200, 400, 600, 800, 1000]
+
+for m in multiplier:
     args = []
-    args.append('-dtctor_dc')
-    x = 10 + 2000*(i)
+    args.append('-uw_coherence')
+    x = 10_000_000*m
     args.append(str(x))
     tasks.append(command+args)
 
-parallel = 1
+parallel = 10
 ps = []
 while len(tasks) > 0 or len(ps) > 0:
     if len(ps) < parallel and len(tasks) > 0:
@@ -192,19 +373,3 @@ while len(tasks) > 0 or len(ps) > 0:
             else:
                 get_output(p)
         ps = new_ps
-
-
-
-
-
-
-# TODO generate plots with these figures:
-# Yb-Yb entanglement fidelity as function of QFC dark count rate
-# Yb-Yb entanglement fidelity as function of QFC efficiency
-# Yb-Yb 1389 vs 556 entanglement generation time
-
-# less necessary
-# 556 ideal reload time (ent time as function of reload time)
-
-# skip for now
-# Transmon-Transom and/or Transmon-Yb 

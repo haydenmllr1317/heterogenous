@@ -1,68 +1,157 @@
 import matplotlib.pyplot as plt
 import re
 import glob
-import numpy as np
 
-######################################### ORGANIZED PLOTS #########################################
-#
-#
-#################################### FIDELITY(QFC_NOISE) PLOTS ####################################
 
-# log_files_fid_vs_qfc_noise = glob.glob('tmp/data/fid(qfc_noise)/qfc_noise=*.log')
+# logs = glob.glob('tmp/data/coherence/coherence=*.log')
 
 # fids = []
-# qfc_noise = []
+# rates = []
+# variables = []
 
-# i = 0
 
-# for filename in log_files_fid_vs_qfc_noise:
-#     i += 1
-#     # print(i)
-
+# for filename in logs:
 #     with open(filename, 'r') as f:
 #         for line in f:
-#             noise_index = line.find(':')
-#             if noise_index != -1:
-#                 qfc_noise.append(float(line[noise_index+1:-1]))
+#             var_index = line.find(':')
+#             if var_index != -1:
+#                 variables.append(float(line[var_index+1:-1]))
 
 #             fid_index = line.find('=')
 #             if fid_index != -1:
 #                 fids.append(float(line[fid_index+1:-1]))
+            
+#             rates_index = line.find('~')
+#             if rates_index != -1:
+#                 rates.append(1/(float(line[rates_index+1:-1])))
                 
-
-# print(len(qfc_noise))
+# print(len(variables))
 # print(len(fids))
+# print(len(rates))
 
-# fids_vs_qfc_sorted_pairs = sorted(zip(qfc_noise, fids))
-# x_sorted, y_sorted = zip(*fids_vs_qfc_sorted_pairs)
+# sorted_pairs = sorted(zip(variables, fids))
+# x_sorted, y1_sorted = zip(*sorted_pairs)
 
-# noise_sorted = list(x_sorted)#[:20]
-# fids_sorted = list(y_sorted)#[:20]
+# vars_sorted = list(x_sorted)
+# fids_sorted = list(y1_sorted)
 
-# print(noise_sorted)
+# sorted_pairs = sorted(zip(variables, rates))
+# x_sorted, y2_sorted = zip(*sorted_pairs)
 
-# plt.figure()
-# plt.plot(noise_sorted, fids_sorted, marker='o')
-# plt.xlim(0,0.501)
-# plt.xticks(noise_sorted[::5])
-# # plt.plot(sim_mem_eff_sorted556, sim_times_sorted556, marker='o', label='556')
-# # plt.plot(sim_expected_x, sim_expected_y, marker='o', label='Expected')
-# # plt.legend()
-# # plt.yscale('log')
-# plt.xlabel("QFC Noise Rate")
-# plt.ylabel("Fidelity")
-# plt.ylim(0,1)
-# plt.title("Yb-Yb Entanglement Fidelity vs QFC Noise")
+# rates_sorted = list(y2_sorted)
+
+# fig, ax1 = plt.subplots()
+
+# ax1.plot(vars_sorted, fids_sorted, color='blue')
+# ax1.set_ylabel("Fidelity", color='blue')
+# ax1.tick_params(axis='y', colors='blue')
+# ax1.set_ylim(0.3,0.7) # for qfc efficiency
+# # ax1.set_ylim(0,1)
+
+
+
+# # Right y-axis
+# ax2 = ax1.twinx()
+# ax2.plot(vars_sorted, rates_sorted, color='red')
+# ax2.set_ylabel("Rate (Hz)", color='red')
+# ax2.tick_params(axis='y', colors='red')
+# ax2.set_ylim(2,4)
+
+# # plt.figure()d
+# # plt.plot(rates_sorted, fids_sorted, marker='o')
+# # plt.xlim(0,0.501)
+# # plt.xticks(rates_sorted[::5])
+# # # plt.plot(sim_mem_eff_sorted556, sim_times_sorted556, marker='o', label='556')
+# # # plt.plot(sim_expected_x, sim_expected_y, marker='o', label='Expected')
+# # # plt.legend()
+# # # plt.yscale('log')
+# # plt.xlabel("QFC Noise Rate")
+# # plt.ylabel("Fidelity")
+# # plt.ylim(0,1)
+# # plt.title("Yb-Yb Entanglement Fidelity vs QFC Noise")
 # plt.grid(True)
-# plt.savefig('tmp/fid_to_QFC_noise_newest.png')
+# plt.savefig('tmp/coherence.png')
 
-###################################################################################################
+
+
+## BIG FIGURE
+
+fig, axes = plt.subplots(1, 3,figsize=(13,3))
+fig.subplots_adjust(left=0.06, right=0.95, top=0.95, bottom=0.21, wspace=0.4)
+ax2 = [None] * len(axes)
+
+# log_files = [glob.glob('tmp/data/qfc_eff/qfc_eff=*.log'), glob.glob('tmp/data/qfc_noise/qfc_noise=*.log'), glob.glob('tmp/data/uw_eff/uw_eff=*.log'), glob.glob('tmp/data/uw_noise/uw_noise=*.log'), glob.glob('tmp/data/coherence/coherence=*.log')]
+log_files = [glob.glob('tmp/data/qfc_eff/qfc_eff=*.log'), glob.glob('tmp/data/qfc_noise/qfc_noise=*.log'), glob.glob('tmp/data/uw_noise/uw_noise=*.log')]
+
+
+for i in range(len(axes)):
+    fids = []
+    rates = []
+    variables = []
+
+    for filename in log_files[i]:
+        with open(filename, 'r') as f:
+            for line in f:
+                var_index = line.find(':')
+                if var_index != -1:
+                    variables.append(float(line[var_index+1:-1]))
+
+                fid_index = line.find('=')
+                if fid_index != -1:
+                    fids.append(float(line[fid_index+1:-1]))
+                
+                rates_index = line.find('~')
+                if rates_index != -1:
+                    rates.append(1/(float(line[rates_index+1:-1])))
+                    
+    print(len(variables))
+    print(len(fids))
+    print(len(rates))
+
+    sorted_pairs = sorted(zip(variables, fids))
+    x_sorted, y1_sorted = zip(*sorted_pairs)
+
+    vars_sorted = list(x_sorted)
+    if i == 3:
+        vars_sorted = [z*1e-6 for z in vars_sorted]
+    fids_sorted = list(y1_sorted)
+
+    sorted_pairs = sorted(zip(variables, rates))
+    x_sorted, y2_sorted = zip(*sorted_pairs)
+
+    rates_sorted = list(y2_sorted)
+
+    axes[i].plot(vars_sorted, fids_sorted, color='blue')
+    axes[i].set_ylabel("Fidelity", color='blue')
+    axes[i].set_ylim(0.2,0.8)
+    axes[i].tick_params(axis='y', colors='blue')
+    axes[i].grid(True)
+    # plt.xlim(0,251)
+    # plt.xticks(reload_sorted[::5])
+
+    ax2[i] = axes[i].twinx()
+    ax2[i].plot(vars_sorted, rates_sorted, color='red')
+    ax2[i].set_ylabel("Rate (Hz)", color='red')
+    ax2[i].set_ylim(0,5.0)
+    ax2[i].tick_params(axis='y', colors='red')
+
+
+axes[0].set_xlabel('QFC Efficiency\n(a)')
+axes[1].set_xlabel('QFC Noise\n(b)')
+# axes[2].set_xlabel('Transducer Efficiency\n(c)')
+axes[2].set_xlabel('Transducer Noise\n(c)')
+
+plt.savefig('tmp/mixed.png')
+
+'''
+
+######################################### ORGANIZED PLOTS #########################################
 #
 ################################## RELOAD_COUNT PLOTS #############################################
 
 
-fig, axes = plt.subplots(1, 3,figsize=(13,3))
-fig.subplots_adjust(left=0.06, right=0.95, top=0.95, bottom=0.21, wspace=0.4)
+fig, axes = plt.subplots(1, 3,figsize=(13,3.5))
+fig.subplots_adjust(left=0.06, right=0.95, top=0.95, bottom=0.18, wspace=0.45)
 
 log_files_reload = glob.glob('tmp/data/reload/reload=*.log')
 
@@ -119,7 +208,7 @@ ax12.set_ylabel("Rate (Hz)", color='red')
 ax12.set_ylim(0,1.0)
 ax12.tick_params(axis='y', colors='red')
 
-axes[1].set_xlabel('Attempts per Reload\n(b)')
+axes[1].set_xlabel('Reload Number\n(b)')
 
 # plt.xlabel("Reload Number")
 # # plt.ylabel("Fidelity")
@@ -249,7 +338,6 @@ axes[0].set_ylabel("Fidelity", color='blue')
 axes[0].set_ylim(0.8,1)
 axes[0].tick_params(axis='y', colors='blue')
 axes[0].grid(True)
-axes[0].set_xticks(np.arange(-0.1,0.8, 0.1)) 
 # plt.xlim(0,251)
 # plt.xticks(reload_sorted[::5])
 
@@ -260,9 +348,6 @@ ax02.set_ylim(0,1)
 ax02.tick_params(axis='y', colors='red')
 
 axes[0].set_xlabel('Photon Collection Efficiency\n(a)')
-
-
-
 # plt.xlabel("Bin Width")
 # plt.ylabel("Fidelity")
 # plt.ylim(0,1)
@@ -277,3 +362,5 @@ axes[0].set_xlabel('Photon Collection Efficiency\n(a)')
 
 # plt.tight_layout()
 plt.savefig('tmp/all_new.png')
+
+'''

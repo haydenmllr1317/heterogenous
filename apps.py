@@ -6,8 +6,14 @@ from math import sqrt
 from sequence.kernel.process import Process
 from sequence.kernel.event import Event
 from math import e
+from memory import _set_state_with_fidelity
 
 class HetRequestApp(RequestApp):
+
+    _psi_plus = [complex(0), complex(sqrt(1 / 2)), complex(sqrt(1 / 2)), complex(0)]
+    _psi_minus = [complex(0), complex(sqrt(1 / 2)), -complex(sqrt(1 / 2)), complex(0)]
+
+
     def __init__(self, node):
         self.basis = None
         self.meas_results = {"X_11": 0, "X_22": 0, "X_33": 0, "X_44": 0, "Z_11": 0, "Z_22": 0, "Z_33": 0, "Z_44": 0}
@@ -48,20 +54,31 @@ class HetRequestApp(RequestApp):
 
         self.time_in_trap = time_to_measurement_results - self.last_trap_time
 
-        if self.node.memo_type == "uW":
-            time_since_excite = self.node.timeline.now() - info.memory.time_after_excitement
-            if self.basis == "X":
-                readout_time = info.memory.measurement_time + info.memory.to_x_basis_time
-            else:
-                readout_time = info.memory.measurement_time
-            time_since_excite += readout_time
-            decohere_prob = (1-e**(-time_since_excite/info.memory.coherence_time))
-            if self.node.get_generator().random() < decohere_prob: # decohered during roundtrip time
-                log.logger.warning('Transmon decohered during round trip time.')
-                info.memory.update_state(info.memory._zero_ket)
-                other_memory.update_state(other_memory._plus_state)
 
         if info.index in self.memo_to_reservation:
+
+            if self.node.memo_type == "uW":
+                time_since_excite = self.node.timeline.now() - info.memory.time_after_excitement
+                if self.basis == "X":
+                    readout_time = info.memory.measurement_time + info.memory.to_x_basis_time
+                else:
+                    readout_time = info.memory.measurement_time
+                time_since_excite += readout_time
+                decohere_prob = (1-e**(-time_since_excite/info.memory.coherence_time))
+                if self.node.get_generator().random() < decohere_prob: # decohered during roundtrip time
+                    log.logger.warning('Transmon decohered during round trip time.')
+                    qm = self.node.timeline.quantum_manager
+                    info.memory.update_state(info.memory._zero_ket)
+                    other_memory.update_state(other_memory._zero_ket)
+                    # if self.basis == "X":
+                    #     if info.memory.psi_sign == 1:
+                    #         _set_state_with_fidelity([info.memory.qstate_key, other_memory.qstate_key], self._psi_minus, 1.0, self.node.get_generator(), qm) # NOTE hardcoded fidelity to 1.0
+                    #     elif info.memory.psi_sign == -1:
+                    #         _set_state_with_fidelity([info.memory.qstate_key, other_memory.qstate_key], self._psi_plus, 1.0, self.node.get_generator(), qm) # NOTE hardcoded fidelity to 1.0
+                    # elif self.basis == "Z": 
+                    #     info.memory.update_state(info.memory._zero_ket)
+                    #     other_memory.update_state(other_memory._zero_ket)
+
             reservation = self.memo_to_reservation[info.index]
             if info.remote_node == reservation.initiator and info.fidelity >= reservation.fidelity:
                 pass
@@ -111,6 +128,7 @@ class HetRequestApp(RequestApp):
         for event in self.node.timeline.events:
             if event.process.activation in ['add_dark_count', 'record_detection', 'lose_atom']:
                 self.node.timeline.remove_event(event)
+        # print('try')
 
 
     def get_fidelity(self, meas_fid):

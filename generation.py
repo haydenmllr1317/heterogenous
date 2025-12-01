@@ -90,7 +90,6 @@ class HetEGA(EntanglementGenerationA):
             # check if we need to retrap (and do so if necessary):
             if self.owner.memo_type == 'Yb':
                 if (self.memory.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or (self.memory.wavelength == 1389 and (self.memory.attempts % self.memory.retrap_num) == 1):
-                    if time_in_trap >= self.memory.lifetime_reload_time: raise ValueError('Too long')
                     self.memory.need_to_retrap = True
                     added_delay = self.memory.retrap_time
                     self.emit_delay += added_delay
@@ -102,7 +101,7 @@ class HetEGA(EntanglementGenerationA):
                     # schedule next atom loss event
                     assert self.memory.atom_lifetime > 0, f"Attempting to schedule atom loss for {self.memory.name} with 0 atom lifetime."
                     time_to_next = int(self.owner.get_generator().exponential(scale=self.memory.atom_lifetime))
-                    time = time_to_next + self.owner.timeline.now()
+                    time = time_to_next + self.owner.timeline.now() + self.memory.retrap_time
                     process = Process(self.memory, "lose_atom", [])
                     event = Event(time, process)
                     self.owner.timeline.schedule(event)
@@ -245,7 +244,6 @@ class HetEGA(EntanglementGenerationA):
             # check if we need to retrap (and do so if necessary):
             if self.owner.memo_type == "Yb":
                 if (self.memory.attempts == 1) or (time_in_trap >= self.memory.lifetime_reload_time) or (self.memory.wavelength == 1389 and (self.memory.attempts % self.memory.retrap_num) == 1):
-                    if time_in_trap >= self.memory.lifetime_reload_time: raise ValueError('Too long')
                     self.memory.need_to_retrap = True
                     added_delay = self.memory.retrap_time
                     self.emit_delay += added_delay
@@ -257,7 +255,7 @@ class HetEGA(EntanglementGenerationA):
                     # schedule next atom loss event
                     assert self.memory.atom_lifetime > 0, f"Attempting to schedule atom loss for {self.memory.name} with 0 atom lifetime."
                     time_to_next = int(self.owner.get_generator().exponential(scale=self.memory.atom_lifetime))
-                    time = time_to_next + self.owner.timeline.now()
+                    time = time_to_next + self.owner.timeline.now() + self.memory.retrap_time
                     process = Process(self.memory, "lose_atom", [])
                     event = Event(time, process)
                     self.owner.timeline.schedule(event)
@@ -357,10 +355,10 @@ class HetEGA(EntanglementGenerationA):
                 self.detector_resolution = resolution
                 self.update_bins(resolution)
 
-            if click_type == 2:
-                log.logger.info('Dark count')
-            elif click_type == 3:
-                raise ValueError('shoudnt have decohere for yb')
+            # if click_type == 2:
+            #     log.logger.info('Dark count')
+            # elif click_type == 3:
+            #     raise ValueError('shoudnt have decohere for yb')
 
             # early time bin
             if self.early_bin[0] <= time <= self.early_bin[1]:

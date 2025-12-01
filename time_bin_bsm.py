@@ -152,7 +152,7 @@ class HetTimeBinBSM(BSM):
             pass
         elif photon.qfc_noise_count == 1: # noise photon in mode
             self.owner.noise_to_detector += 1
-            noise_bin = self.get_generator().choice([0,1]) # 0 for early, 1 for late
+            noise_bin = int(self.get_generator().choice([0,1])) # 0 for early, 1 for late
             noise_time = self.owner.timeline.now() + (noise_bin*self.bin_separation) + round(self.get_generator().random() * self.bin_width) # where within appropriate detection window noise is added
             noise_get_args = {'photon_type': 0} # noisy photon
             process_noise = Process(self.detectors[detector_num_noise], "get", [], noise_get_args)
@@ -166,7 +166,7 @@ class HetTimeBinBSM(BSM):
             photon_odds = self.get_generator().random()
             if photon_odds >= photon.loss: # photon survives to detector
                 self.owner.noise_to_detector += 1
-                noise_bin = self.get_generator().choice([0,1])
+                noise_bin = int(self.get_generator().choice([0,1]))
                 noise_time = self.owner.timeline.now() + (noise_bin*self.bin_separation) + round(self.get_generator().random() * self.bin_width) # where within appropriate detection window noise is added
                 noise_get_args = {'photon_type': 0} # noisy photon
                 process_noise = Process(self.detectors[detector_num_noise], "get", [], noise_get_args)

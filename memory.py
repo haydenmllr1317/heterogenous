@@ -385,7 +385,7 @@ class uW(Memory):
         self.measurement_time = 88_000 #12_000_000 was previously here, not sure why # 9
         self.measurement_fidelity = .992 # bookmarked source                             # 10
 
-        self.output_wavelength = 1550 # wavelength we're going to transduce to.          # 11
+        self.output_wavelength = 1389 # wavelength we're going to transduce to.          # 11
         # this is the product of on-chip efficiency and fiber-chip coupling efficiency
         self.transduction_efficiency = 0.6                                               # 12
         self.chip_to_fiber_efficiency = 0.1  # chip to fiber coupling efficiency         # 13
