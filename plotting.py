@@ -64,7 +64,7 @@ import numpy as np
 fig, axes = plt.subplots(1, 3,figsize=(13,3))
 fig.subplots_adjust(left=0.06, right=0.95, top=0.95, bottom=0.21, wspace=0.4)
 
-log_files_reload = glob.glob('tmp/data/reload/reload=*.log')
+log_files_reload = glob.glob('tmp/data/qfc_noise/qfc_noise=*.log')
 
 fids = []
 rates = []
@@ -105,21 +105,21 @@ x_sorted, y2_sorted = zip(*rates_vs_reload_sorted_pairs)
 rates_sorted = list(y2_sorted)
 
 # fig, ax1 = plt.subplots()
-axes[1].plot(reload_sorted, fids_sorted, color='blue')
+axes[1].plot(reload_sorted, fids_sorted, color='blue', marker='s', markersize=4)
 axes[1].set_ylabel("Fidelity", color='blue')
-axes[1].set_ylim(0.8,1)
+axes[1].set_ylim(0.2,0.8)
 axes[1].tick_params(axis='y', colors='blue')
 axes[1].grid(True)
 # plt.xlim(0,251)
 # plt.xticks(reload_sorted[::5])
 
 ax12 = axes[1].twinx()
-ax12.plot(reload_sorted, rates_sorted, color='red')
+ax12.plot(reload_sorted, rates_sorted, color='red', marker='^', markersize=4)
 ax12.set_ylabel("Rate (Hz)", color='red')
-ax12.set_ylim(0,1.0)
+ax12.set_ylim(0,5)
 ax12.tick_params(axis='y', colors='red')
 
-axes[1].set_xlabel('Attempts per Reload\n(b)')
+axes[1].set_xlabel('QFC Noise\n(b)')
 
 # plt.xlabel("Reload Number")
 # # plt.ylabel("Fidelity")
@@ -133,7 +133,7 @@ axes[1].set_xlabel('Attempts per Reload\n(b)')
 ################################## BIN WIDTH PLOTS #############################################
 
 
-log_files_width = glob.glob('tmp/data/binwidth/width=*.log')
+log_files_width = glob.glob('tmp/data/uw_noise/uw_noise=*.log')
 
 fids = []
 rates = []
@@ -172,25 +172,25 @@ rates_vs_reload_sorted_pairs = sorted(zip(width, rates))
 x_sorted, y2_sorted = zip(*rates_vs_reload_sorted_pairs)
 
 reload_sorted = list(x_sorted)
-reload_sorted = [z*1e-6 for z in reload_sorted]
+# reload_sorted = [z*1e-6 for z in reload_sorted]
 rates_sorted = list(y2_sorted)
 
 # fig, ax1 = plt.subplots()
-axes[2].plot(reload_sorted, fids_sorted, color='blue')
+axes[2].plot(reload_sorted, fids_sorted, color='blue', marker='s', markersize=4)
 axes[2].set_ylabel("Fidelity", color='blue')
-axes[2].set_ylim(0.8,1)
+axes[2].set_ylim(0.2,0.8)
 axes[2].tick_params(axis='y', colors='blue')
 axes[2].grid(True)
 # plt.xlim(0,251)
 # plt.xticks(reload_sorted[::5])
 
 ax22 = axes[2].twinx()
-ax22.plot(reload_sorted, rates_sorted, color='red')
+ax22.plot(reload_sorted, rates_sorted, color='red', marker='^', markersize=4)
 ax22.set_ylabel("Rate (Hz)", color='red')
-ax22.set_ylim(0,1.0)
+ax22.set_ylim(0,5)
 ax22.tick_params(axis='y', colors='red')
 
-axes[2].set_xlabel('Time Bin Width (microseconds)\n(c)')
+axes[2].set_xlabel('Transducer Noise\n(c)')
 # plt.xlabel("Bin Width")
 # plt.ylabel("Fidelity")
 # plt.ylim(0,1)
@@ -203,7 +203,7 @@ axes[2].set_xlabel('Time Bin Width (microseconds)\n(c)')
 ################################## BIN WIDTH PLOTS #############################################
 
 
-log_files_pce = glob.glob('tmp/data/pce/pce=*.log')
+log_files_pce = glob.glob('tmp/data/qfc_eff/qfc_eff=*.log')
 
 fids = []
 rates = []
@@ -244,22 +244,22 @@ x_sorted, y2_sorted = zip(*rates_vs_pce_sorted_pairs)
 rates_sorted = list(y2_sorted)
 
 # fig, ax1 = plt.subplots()
-axes[0].plot(pces_sorted, fids_sorted, color='blue')
+axes[0].plot(pces_sorted, fids_sorted, color='blue', marker='s', markersize=4)
 axes[0].set_ylabel("Fidelity", color='blue')
-axes[0].set_ylim(0.8,1)
+axes[0].set_ylim(0.2,0.8)
 axes[0].tick_params(axis='y', colors='blue')
 axes[0].grid(True)
-axes[0].set_xticks(np.arange(-0.1,0.8, 0.1)) 
+axes[0].set_xticks(np.arange(0.2, 1.2, 0.2)) 
 # plt.xlim(0,251)
 # plt.xticks(reload_sorted[::5])
 
 ax02 = axes[0].twinx()
-ax02.plot(pces_sorted, rates_sorted, color='red')
+ax02.plot(pces_sorted, rates_sorted, color='red', marker='^', markersize=4)
 ax02.set_ylabel("Rate (Hz)", color='red')
-ax02.set_ylim(0,1)
+ax02.set_ylim(0,5)
 ax02.tick_params(axis='y', colors='red')
 
-axes[0].set_xlabel('Photon Collection Efficiency\n(a)')
+axes[0].set_xlabel('QFC Efficiency\n(a)')
 
 
 
@@ -276,4 +276,4 @@ axes[0].set_xlabel('Photon Collection Efficiency\n(a)')
 
 
 # plt.tight_layout()
-plt.savefig('tmp/all_new.png')
+plt.savefig('tmp/trial2.png')

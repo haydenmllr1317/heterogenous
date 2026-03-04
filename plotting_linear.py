@@ -14,7 +14,8 @@ fig.subplots_adjust(left=0.07, right=0.99, top=0.95, bottom=0.24, wspace=0.27)
 log_files = [glob.glob('tmp/data/ideal_coherence/coherence=*.log'), glob.glob('tmp/data/realistic_coherence/coherence=*.log')] # , glob.glob('tmp/data/qfc_noise/qfc_noise=*.log'), glob.glob('tmp/data/uw_noise/uw_noise=*.log')]
 
 colors = ['blue', 'red']
-labels = ['Near Ideal', 'Default']
+labels = ['Optimistic', 'Default']
+markers = ['s', '^']
 
 for i in range(len(log_files)):
     fids = []
@@ -54,8 +55,8 @@ for i in range(len(log_files)):
 
     rates_sorted = list(y2_sorted)
 
-    axes[1].plot(vars_even[1:], fids_sorted[1:], color=colors[i], label=labels[i])
-    axes[0].plot(vars_even[1:], rates_sorted[1:], color=colors[i], label=labels[i])
+    axes[1].plot(vars_even[1:], fids_sorted[1:], color=colors[i], label=labels[i], marker=markers[i], markersize=6)
+    axes[0].plot(vars_even[1:], rates_sorted[1:], color=colors[i], label=labels[i], marker=markers[i], markersize=6)
 
 
 axes[1].set_xticks(vars_even[1:])
@@ -83,7 +84,7 @@ axes[0].legend(loc='upper left')
 
 # plt.rcParams["font.size"] = 20
 
-plt.savefig('tmp/final_final.png')
+plt.savefig('tmp/trial3.png')
 
 '''
 
