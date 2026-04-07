@@ -25,6 +25,10 @@ from sequence.kernel.event import Event
 from sequence.kernel.process import Process
 # from encoding import time_bin, fock
 from sequence.utils import log
+import gmpy2
+gmpy2.get_context().precision = 80  # 80 bits ~ 24 decimal digits ~ sufficient for 10,000 years of ps timing 
+from gmpy2 import mpfr, rint, ceil
+
 
 
 class Detector(Entity):
@@ -90,8 +94,11 @@ class Detector(Entity):
             if not res[key]:
                 return
 
+        if ('photon_type' in kwargs) and (kwargs['photon_type'] == 0):
+            self.owner.owner.detectors_got += 1  
+
         if self.get_generator().random() < self.efficiency:
-            self.record_detection()
+            self.record_detection(**kwargs)
         else:
             log.logger.debug(f'Photon loss in detector {self.name}')
 
@@ -117,22 +124,42 @@ class Detector(Entity):
         self.timeline.schedule(event2)
         # print(time)
 
-    def record_detection(self):
+
+    def record_detection(self, **kwargs):
         """Method to record a detection event.
 
         Will calculate if detection succeeds (by checking if we have passed `next_detection_time`)
         and will notify observers with the detection time (rounded to the nearest multiple of detection frequency).
         """
 
+        # NOTE should get parameters for count_rate and time_resolution from Joaquin
+
         now = self.timeline.now()
+
+        # if 'photon_type' in kwargs:
+        #     if kwargs['photon_type'] == 0:
+        #         self.owner.owner.detectors_recorded += 1
 
         if now > self.next_detection_time:
             self.recorded_detection_count += 1
-            time = round(now / self.time_resolution) * self.time_resolution
-            self.notify({'time': time})
-            self.next_detection_time = now + (1e12 / self.count_rate)  # period in ps
+            index = rint(mpfr(now) / mpfr(self.time_resolution))
+            time = int(index) * self.time_resolution
+            # time = round(now / self.time_resolution) * self.time_resolution
+            if not kwargs:
+                log.logger.info(f'Dark count from {self.name}.')
+            info = {'time': time, **kwargs}
+            if 'photon_type' in kwargs:
+                if kwargs['photon_type'] == 0:
+                    self.owner.owner.detectors_recorded += 1
+            self.notify(info)
+            period = int(ceil(mpfr("1e12") / mpfr(self.count_rate)))
+            # self.next_detection_time = now + (1e12 / self.count_rate)  # period in ps
+            self.next_detection_time = now + period
         else:
-            self.undetectable_photon_count += 1
+            if 'photon_type' in kwargs:
+                if kwargs['photon_type'] == 0:
+                    # print(self.next_detection_time - now)
+                    self.undetectable_photon_count += 1
 
     def notify(self, info: Dict[str, Any]):
         """Custom notify function (calls `trigger` method)."""

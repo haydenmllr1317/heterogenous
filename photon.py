@@ -75,12 +75,19 @@ class Photon:
         self.location: Entity = location
         self.encoding_type: Dict[str, Any] = encoding_type
         self.is_null: bool = False
+<<<<<<< HEAD
         # if encoding_type == 'yb_time_bin':
         #     self.loss: float = 0.995
         # else:
         #     self.loss: float = 0
+=======
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
         self.loss = 0
         self.use_qm = use_qm
+        self.qfc_noise_count = 0 # number of noise photons in this mode
+        self.transducer_noise_count = 0
+        self.contains_signal: bool = True
+        self.only_early = False
 
         self.quantum_state: Union[State, int] = -1
         if self.use_qm:

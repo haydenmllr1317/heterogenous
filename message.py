@@ -1,0 +1,28 @@
+from sequence.entanglement_management.generation.generation_message import EntanglementGenerationMessage, GenerationMsgType
+
+
+class HetEntanglementGenerationMessage(EntanglementGenerationMessage):
+
+    def __init__(self, msg_type: GenerationMsgType, receiver: str | None, protocol_type: str, **kwargs):
+        super().__init__(msg_type, receiver, protocol_type, **kwargs)
+
+        # need to just add min time
+        self.min_time: int | None = None
+        self.emit_delay: int | None = None
+        self.bin_width: int | None = None
+        self.bin_separation: int | None = None
+        self.total_bin_separation: int | None = None
+
+        if ('click_type' in kwargs):
+            self.click_type = kwargs['click_type']
+        else:
+            self.click_type = None # never the case for our het networks
+
+        fields = {
+            GenerationMsgType.NEGOTIATE: ['emit_delay', 'bin_width', 'bin_separation'],
+            GenerationMsgType.NEGOTIATE_ACK: ['min_time', 'total_bin_separation', 'total_bin_width']
+        }
+
+        if msg_type in fields:
+            for field in fields[msg_type]:
+                setattr(self, field, kwargs.get(field))

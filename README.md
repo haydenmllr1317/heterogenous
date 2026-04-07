@@ -11,3 +11,5 @@ encoding type essentially means the basis of the quantum state of the photons is
 {|0>, |1>}, denoting photon existing or not. Time-bin photons have quantum
 states expressed by the basis {|E>, |L>} denoting early and late arriving
 photons respectively.
+
+RND worK?

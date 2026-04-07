@@ -1,4 +1,5 @@
 import json
+<<<<<<< HEAD
 import numpy as np
 from networkx import Graph, dijkstra_path, exception
 
@@ -10,6 +11,18 @@ from sequence.topology.topology import Topology as Topo
 
 
 class RouterNetTopoYb(Topo):
+=======
+
+from sequence.topology.topology import Topology as Topo
+from sequence.topology.router_net_topo import RouterNetTopo
+from nodes import HetBSMNode, HetQR
+from sequence.constants import SPEED_OF_LIGHT, MICROSECOND
+from qfc import QFC
+from qchannel import HetQuantumChannel
+from networkx import Graph, single_source_dijkstra, exception
+
+class YbRouterNetTopo(RouterNetTopo):
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
     """Class for generating quantum communication network with quantum routers
 
     Class RouterNetTopo is the child of class Topology. Quantum routers, BSM
@@ -25,6 +38,7 @@ class RouterNetTopoYb(Topo):
         cchannels (List[ClassicalChannel]): list of classical channel objects in network.
         tl (Timeline): the timeline used for simulation
     """
+<<<<<<< HEAD
     ALL_GROUP = "groups"
     ASYNC = "async"
     BSM_NODE = "BSMNode"
@@ -93,11 +107,66 @@ class RouterNetTopoYb(Topo):
             elif node_type == self.QUANTUM_ROUTER:
                 memo_size = node.get(self.MEMO_ARRAY_SIZE, 0)
                 node_obj = QuantumRouter(name, self.tl, memo_size, memo_type)
+=======
+
+    MEMO_ARRAY_TYPE = "memo_type"
+    ENCODING_TYPE = 'encoding_type'
+    WAVELENGTH = 'wavelength'
+    ALL_QFCS = 'qfcs'
+    CONVERTER = "converter"
+
+    # def __init__(self, conf_file_name: str):
+    #     super().__init__(conf_file_name)
+
+    # # just adding QFC to channels as converter
+    # def _add_qchannels(self, config: dict) -> None:
+    #     for qc in config.get(self.ALL_Q_CHANNEL, []):
+    #         src_str, dst_str = qc[self.SRC], qc[self.DST]
+    #         src_node = self.tl.get_entity_by_name(src_str)
+    #         if src_node is not None:
+    #             name = qc.get(self.NAME, f"qc.{src_str}.{dst_str}")
+    #             distance = qc[self.DISTANCE]
+    #             attenuation = qc[self.ATTENUATION]
+    #             converter = qc[self.CONVERTER] # NOTE added this
+    #             qc_obj = HetQuantumChannel(name, self.tl, attenuation, distance, qfc=converter)
+    #             qc_obj.set_ends(src_node, dst_str)
+    #             self.qchannels.append(qc_obj)
+
+    # # make QFC not a real desination in terms of router map
+    # def _map_bsm_routers(self, config):
+    #     for qc in config[self.ALL_Q_CHANNEL]:
+    #         src, dst = qc[self.SRC], qc[self.DST]
+    #         for qfc in config[self.ALL_QFCS]:
+    #             if dst == qfc[self.NAME]:
+    #                 dst = qfc[self.DST]
+    #                 break
+    #         if dst in self.bsm_to_router_map:
+    #             self.bsm_to_router_map[dst].append(src)
+    #         else:
+    #             self.bsm_to_router_map[dst] = [src]
+
+    # creating HetBSMNode and HetQR
+    def _add_nodes(self, config: dict):
+        for node in config[self.ALL_NODE]:
+            seed = node[self.SEED]
+            node_type = node[self.TYPE]
+            name = node[self.NAME]
+            template_name = node.get(self.TEMPLATE, None)
+            template = self.templates.get(template_name, {})
+
+            if node_type == self.BSM_NODE:
+                others = self.bsm_to_router_map[name]
+                node_obj = HetBSMNode(name, self.tl, others, component_templates=template)
+            elif node_type == self.QUANTUM_ROUTER:
+                memo_size = node.get(self.MEMO_ARRAY_SIZE, 0)
+                node_obj = HetQR(name, self.tl, memo_size, component_templates=template)
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
             else:
                 raise ValueError("Unknown type of node '{}'".format(node_type))
 
             node_obj.set_seed(seed)
             self.nodes[node_type].append(node_obj)
+<<<<<<< HEAD
 
     def _add_bsm_node_to_router(self):
         for bsm in self.bsm_to_router_map:
@@ -178,12 +247,27 @@ class RouterNetTopoYb(Topo):
 
     def _generate_forwarding_table(self, config: dict):
         """For static routing."""
+=======
+    
+
+    def _generate_forwarding_table(self, config: dict):
+        """For static routing.
+           Also updating the classical communication delay
+
+        Args:
+            config (dict): the config file
+        """
+
+        all_paths = {}  # (src, dst) -> (length: float, hop: int, path: tuple)
+
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
         graph = Graph()
         for node in config[Topo.ALL_NODE]:
             if node[Topo.TYPE] == self.QUANTUM_ROUTER:
                 graph.add_node(node[Topo.NAME])
 
         costs = {}
+<<<<<<< HEAD
         if config[self.IS_PARALLEL]:
             for qc in config[self.ALL_Q_CHANNEL]:
                 router, bsm = qc[self.SRC], qc[self.DST]
@@ -200,6 +284,21 @@ class RouterNetTopoYb(Topo):
                 else:
                     costs[bsm] = [router] + costs[bsm]
                     costs[bsm][-1] += qc.distance
+=======
+
+        for qc in self.qchannels:
+            # update all_paths
+            router, bsm = qc.sender.name, qc.receiver
+            all_paths[(router, bsm)] = (qc.distance, 0, (router, bsm))
+            all_paths[(bsm, router)] = (qc.distance, 0, (bsm, router))
+
+            if bsm not in costs:
+                costs[bsm] = [router, qc.distance]
+            else:
+                costs[bsm] = [router] + costs[bsm]
+                costs[bsm][-1] += qc.distance
+
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 
         graph.add_weighted_edges_from(costs.values())
         for src in self.nodes[self.QUANTUM_ROUTER]:
@@ -208,12 +307,43 @@ class RouterNetTopoYb(Topo):
                     continue
                 try:
                     if dst_name > src.name:
+<<<<<<< HEAD
                         path = dijkstra_path(graph, src.name, dst_name)
                     else:
                         path = dijkstra_path(graph, dst_name, src.name)[::-1]
+=======
+                        length, path = single_source_dijkstra(graph, src.name, dst_name)
+                    else:
+                        length, path = single_source_dijkstra(graph, dst_name, src.name)
+                        path = path[::-1]
+                    # update all_paths
+                    hop_count = len(path) - 2
+                    all_paths[(src.name, dst_name)] = (length, hop_count, tuple(path))
+                    
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
                     next_hop = path[1]
                     # routing protocol locates at the bottom of the stack
                     routing_protocol = src.network_manager.protocol_stack[0]  # guarantee that [0] is the routing protocol?
                     routing_protocol.add_forwarding_rule(dst_name, next_hop)
                 except exception.NetworkXNoPath:
                     pass
+<<<<<<< HEAD
+=======
+        
+        ''' for now I am commenting this out
+        # update the classical delay and the distance
+        def classical_delay(distance: float, hop_count: int) -> float:
+            """Model the classical delay as a function of distance and hop count
+            """
+            return distance / SPEED_OF_LIGHT + hop_count * 20 * MICROSECOND + 100 * MICROSECOND
+
+        for cc in self.cchannels:
+            src = cc.sender.name
+            dst = cc.receiver
+            length, hop_count, path = all_paths[(src, dst)]
+            cc.delay = classical_delay(length, hop_count)
+            cc.distance = length   # not important
+            # print(f'{path}: {cc.delay/1e6}us')
+
+        '''
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec

@@ -25,123 +25,29 @@ from sequence.kernel.quantum_manager import KET_STATE_FORMALISM, DENSITY_MATRIX_
 from encoding import *
 from sequence.utils import log
 from sequence.components.bsm import _set_state_with_fidelity
+from copy import copy
+from sequence.components.bsm import BSM
 
-
-class BSM(Entity):
-    """Parent class for bell state measurement devices.
-
-    Attributes:
-        name (str): label for BSM instance.
-        timeline (Timeline): timeline for simulation.
-        phase_error (float): phase error applied to measurement.
-        detectors (List[Detector]): list of attached photon detection devices.
-        resolution (int): maximum time resolution achievable with attached detectors.
-    """
-
-    _phi_plus = [complex(sqrt(1 / 2)), complex(0), complex(0), complex(sqrt(1 / 2))]
-    _phi_minus = [complex(sqrt(1 / 2)), complex(0), complex(0), -complex(sqrt(1 / 2))]
-    _psi_plus = [complex(0), complex(sqrt(1 / 2)), complex(sqrt(1 / 2)), complex(0)]
-    _psi_minus = [complex(0), complex(sqrt(1 / 2)), -complex(sqrt(1 / 2)), complex(0)]
-
-    def __init__(self, name: str, timeline: "Timeline", phase_error: float = 0, detectors=None):
-        """Constructor for base BSM object.
-
-        Args:
-            name (str): name of the beamsplitter instance.
-            timeline (Timeline): simulation timeline.
-            phase_error (float): Phase error applied to polarization photons (default 0).
-            detectors (List[Dict[str, Any]]): List of parameters for attached detectors,
-                in dictionary format (default None).
-        """
-
-        super().__init__(name, timeline)
-        self.encoding = "None"
-        self.phase_error = phase_error
-        self.photons = []
-        self.photon_arrival_time = -1
-        self.resolution = None
-
-        self.detectors = []
-        if detectors is not None:
-            for i, d in enumerate(detectors):
-                if d is not None:
-                    detector = Detector("{}_{}".format(self.name, i), timeline, **d)
-                    detector.attach(self)
-                    detector.owner = self
-                else:
-                    detector = None
-                self.detectors.append(detector)
-
-        # define bell basis vectors
-        self.bell_basis = ((complex(sqrt(1 / 2)), complex(0), complex(0), complex(sqrt(1 / 2))),
-                           (complex(sqrt(1 / 2)), complex(0), complex(0), -complex(sqrt(1 / 2))),
-                           (complex(0), complex(sqrt(1 / 2)), complex(sqrt(1 / 2)), complex(0)),
-                           (complex(0), complex(sqrt(1 / 2)), -complex(sqrt(1 / 2)), complex(0)))
-
-    def init(self):
-        """Implementation of Entity interface (see base class)."""
-
-        # get resolution
-        self.resolution = max(d.time_resolution for d in self.detectors)
-
-        self.photons = []
-        self.photon_arrival_time = -1
-
-    @abstractmethod
-    def get(self, photon, **kwargs):
-        """Method to receive a photon for measurement (abstract).
-
-        Arguments:
-            photon (Photon): photon to measure.
-        """
-        # NOTE: CHANGED THIS TO REFLECT ENCODING IS NOW A DICT
-        assert photon.encoding_type["name"] == self.encoding["name"], \
-            "BSM expecting photon with encoding '{}' received photon with encoding '{}'".format(
-                self.encoding, photon.encoding_type["name"])
-
-        # check if photon arrived later than current photon
-        if self.photon_arrival_time < self.timeline.now():
-            # clear photons
-            self.photons = [photon]
-            # set arrival time
-            self.photon_arrival_time = self.timeline.now()
-
-        # check if we have a photon from a new location
-        if not any([reference.location == photon.location for reference in self.photons]):
-            self.photons.append(photon)
-
-    @abstractmethod
-    def trigger(self, detector: Detector, info: Dict[str, Any]):
-        """Method to receive photon detection events from attached detectors (abstract).
-
-        Arguments:
-            detector (Detector): the source of the detection message.
-            info (Dict[str, Any]): the message from the source detector.
-        """
-
-        pass
-
-    def notify(self, info: Dict[str, Any]):
-        for observer in self._observers:
-            observer.bsm_update(self, info)
-
-    def update_detectors_params(self, arg_name: str, value: Any) -> None:
-        """Updates parameters of attached detectors."""
-        for detector in self.detectors:
-            detector.__setattr__(arg_name, value)
-
-class TimeBinBSM(BSM):
+class HetTimeBinBSM(BSM):
     """Class modeling a time bin BSM device.
 
-    Measures incoming photons according to time bins and manages entanglement.
+    Recieves time-bin photons and passes them on to detectors. When detectors have been triggered
+    at time-bin separated times, it notifies BSMNode and heralds memory entanglement.
 
     Attributes:
         name (str): label for BSM instance
         timeline (Timeline): timeline for simulation
         detectors (List[Detector]): list of attached photon detection devices
         phase_error (float): phase error applied to polarization qubits (unused)
-        encoding(float): 'time_bin', used in 'BSM' class to ensure recieved
+        encoding (str): 'time_bin', used in 'BSM' class to ensure recieved
             photon is of the same encoding type
+        trigger_times (List[int]): time-ordered list of recent times detectors clicked
+        signal_values (List[bool]): time-ordered list of booleans of whether recently arrived photons
+            that caused detector clicks where signals or not.
+        detector_hits (List[int]): time-ordered list of numbers of recently triggered detectors.
+        
+        
+        ######### NOT USING THE REST OF THESE FOR NOW
         last_res (List[Int]): pair of ints, initially set to [-1,-1], where the
             first int is the time of the last time 'trigger' was called and the
             second int is the detector (0 or 1) that caused said trigger
@@ -174,7 +80,7 @@ class TimeBinBSM(BSM):
     _meas_circuit = Circuit(1)
     _meas_circuit.measure(0)
 
-    def __init__(self, name, timeline, encoding, phase_error=0, detectors=None):
+    def __init__(self, name, timeline, phase_error=0, detectors=None):
         """Constructor for the time bin BSM class.
 
         Args:
@@ -188,24 +94,39 @@ class TimeBinBSM(BSM):
         if detectors is None:
             detectors = [{}, {}]
 
-        super().__init__(name, timeline, phase_error, detectors)
+        # super from Entity class
+        self.name: str                  = name
+        self.timeline: Timeline         = timeline
+        self.owner: "Entity" | None     = None
+        self._observers: list[Any]      = []
+        self._receivers: list["Entity"] = []
+        timeline.add_entity(self)
 
-        self.encoding = encoding
-        self.last_res = [-1, -1]
-        self.early_early = 0
-        self.early_late = 0
-        self.late_early = 0
-        self.late_late = 0
-        self.desired_state = None
-        self.trigger_count = 0
-        self.appropriate_time_photon_count = 0
-        self.approved_state_invalid_time_photon_count = 0
-        self.invalid_state_photon_count = 0
+        # super from BSM class
+        self.encoding = "het_time_bin"
+        self.phase_error = phase_error
+
+        self.detectors = []
+        if detectors is not None:
+            for i, d in enumerate(detectors):
+                if d is not None:
+                    detector = Detector(f"{self.name}_{i}", timeline, **d)
+                    detector.attach(self)
+                    detector.owner = self
+                else:
+                    detector = None
+                self.detectors.append(detector)
+
+        self.bin_separation = 0 # time separating our bins
+        self.bin_width = 0 # size of our time bins
+
+        self.measurement = None
+        
         
         # for our BSM setup...
         assert len(self.detectors) == 2
 
-    def get(self, photon, **kwargs):
+    def get(self, photon):
         """See base class.
 
         This method adds additional side effects not present in the base class.
@@ -215,22 +136,13 @@ class TimeBinBSM(BSM):
             May alter the quantum state of photon and any stored photons.
         """
 
-        super().get(photon)
-        log.logger.debug(self.name + " recieved 'photon' quantum information")
-        
-        if len(self.photons) == 2:
-            qm = self.timeline.quantum_manager
-            p0, p1 = self.photons
-            key0, key1 = p0.quantum_state, p1.quantum_state
-            keys = [key0, key1]
-            # measurement results here are considered in the {early,late} basis
-            meas0, meas1 = [qm.run_circuit(self._meas_circuit, [key], self.get_generator().random())[key]
-                            for key in keys]
-            
-            log.logger.debug(self.name + " measured photons as {}, {}".format(meas0,meas1))
+        log.logger.debug(self.name + " recieved 'photon' quantum information.")
 
-            late_time = self.timeline.now() + self.encoding["bin_separation"]
+        qm = self.timeline.quantum_manager
+        key = photon.quantum_state # key pointing to ket state of photon
+        measurement = qm.run_circuit(self._meas_circuit, [key], self.get_generator().random())[key] # 0 for early, 1 for late
 
+<<<<<<< HEAD
             p0_odds = self.get_generator().random()
             p1_odds = self.get_generator().random()
 
@@ -322,26 +234,83 @@ class TimeBinBSM(BSM):
                     self.timeline.schedule(event)
                 else:
                     log.logger.info(f'{self.name} lost photon p1')
+=======
+        detector_num_signal = self.get_generator().choice([0,1]) # detector where signal photon goes
+        detector_num_noise = self.get_generator().choice([0,1]) # detector where noise photon goes
+
+        self.measurement = measurement # adding this for tracking weird noise issues
+
+        # add QFC noise if needed
+        if photon.qfc_noise_count == 0: # only signal in mode
+            pass
+        elif photon.qfc_noise_count == 1: # noise photon in mode
+            self.owner.noise_to_detector += 1
+            noise_bin = int(self.get_generator().choice([0,1])) # 0 for early, 1 for late
+            noise_time = self.owner.timeline.now() + (noise_bin*self.bin_separation) + round(self.get_generator().random() * self.bin_width) # where within appropriate detection window noise is added
+            noise_get_args = {'photon_type': 0} # noisy photon
+            process_noise = Process(self.detectors[detector_num_noise], "get", [], noise_get_args)
+            event_noise = Event(noise_time, process_noise)
+            self.timeline.schedule(event_noise)
+        else:
+            raise ValueError('We only consider up to 1 QFC noise photon.')
+
+        # add transducer noise
+        for i in range(photon.transducer_noise_count):
+            photon_odds = self.get_generator().random()
+            if photon_odds >= photon.loss: # photon survives to detector
+                self.owner.noise_to_detector += 1
+                noise_bin = int(self.get_generator().choice([0,1]))
+                noise_time = self.owner.timeline.now() + (noise_bin*self.bin_separation) + round(self.get_generator().random() * self.bin_width) # where within appropriate detection window noise is added
+                noise_get_args = {'photon_type': 0} # noisy photon
+                process_noise = Process(self.detectors[detector_num_noise], "get", [], noise_get_args)
+                event_noise = Event(noise_time, process_noise)
+                self.timeline.schedule(event_noise)
+
+        # add signal
+        if photon.contains_signal: # photon object is not solely noise
+            photon_odds = self.get_generator().random()
+            if (photon_odds >= photon.loss): # now: photon must survive to detector
+                if not photon.only_early: # no decoherence during generaiton
+                    signal_get_args = {'photon_type': 1} # signal photon
+                    signal_time = self.timeline.now() + (measurement * self.bin_separation) + round(self.get_generator().random() * self.bin_width) # where within appropriate detrection window noise is added
+                    process_signal = Process(self.detectors[detector_num_signal], "get", [], signal_get_args)
+                    event_signal = Event(signal_time, process_signal)
+                    self.timeline.schedule(event_signal)
+                else: # photon decohered during generation, only early pulse
+                    if measurement == 0:
+                        signal_get_args = {'photon_type': 3} # partial signal photon
+                        signal_time = self.timeline.now() + (measurement * self.bin_separation) + round(self.get_generator().random() * self.bin_width) # where within appropriate detrection window noise is added
+                        process_signal = Process(self.detectors[detector_num_signal], "get", [], signal_get_args)
+                        event_signal = Event(signal_time, process_signal)
+                        self.timeline.schedule(event_signal)
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 
 
-    # this class should call self.notify(info) only if the photon
-    #   that caused the trigger event was the second photon in a 
-    #   pair that was in one of the approved |early,late> or |late,early> states
+                
+
     def trigger(self, detector: Detector, info: Dict[str, Any]):
-        """See base class.
-
-        This method adds additional side effects not present in the base class.
-
-        Side Effects:
-            May send a further message to any attached entities.
         """
 
-        self.trigger_count += 1
+        This class is called in the Detector modules to indicate a detector
+        was clicked. It consumes:
+
+        detector(Detector) - what detector click comes from
+        info (Dict[str, Any]) - contains time of click and possibly the quantum_state key
+            of the "real" (not noise) photon that triggered the detector.
+
+        """
+
         detector_num = self.detectors.index(detector)
         time = info["time"]
+        try:
+            click_type = info["photon_type"] # 0 if noisy photon, 1 if signal photon
+        except Exception:
+            click_type = 2 # detector dark count
 
-        log.logger.info(self.name + ' was triggered by ' + detector.name)
+        if click_type == 0:
+            self.owner.trigger_sent += 1
 
+<<<<<<< HEAD
         # check if valid time
         # if round((time - self.last_res[0]) / self.encoding["bin_separation"]) == 1:
         if abs(((time - self.last_res[0]) / self.encoding["bin_separation"]) - 1.0) < 0.0001: # I SHOULD CHANGE THIS TO FACTOR IN RESOLUTiON IN A SANE WAY
@@ -374,3 +343,8 @@ class TimeBinBSM(BSM):
             self.invalid_state_photon_count += 1
 
         self.last_res = [time, detector_num]
+=======
+        info = {'info_type': 'BSM_res', 'res': detector_num, 'time': time, 'click_type': click_type}
+
+        self.notify(info)
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec

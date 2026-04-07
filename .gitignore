@@ -6,3 +6,7 @@
 
 # html files
 *.html
+
+trigger.py
+
+tmp/*
