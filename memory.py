@@ -8,16 +8,6 @@ if TYPE_CHECKING:
 
 from photon import Photon
 from sequence.kernel.entity import Entity
-<<<<<<< HEAD
-from sequence.kernel.event import Event
-from sequence.kernel.process import Process
-from encoding import single_atom, single_heralded, yb_time_bin#, time_bin
-from sequence.constants import EPSILON
-from sequence.utils import log
-from sequence.components.memory import MemoryArray
-from generation import EntanglementGenerationTimeBin
-from sequence.components.circuit import Circuit
-=======
 from sequence.constants import EPSILON
 from sequence.utils import log
 # from generation import EntanglementGenerationTimeBin as EGTB
@@ -40,53 +30,13 @@ _psi_plus = [complex(0), complex(sqrt(1 / 2)), complex(sqrt(1 / 2)), complex(0)]
 
 _photon_meas_circuit = Circuit(1)
 _photon_meas_circuit.measure(0)
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 
 
 class HetMemoryArray(MemoryArray):
     """Aggregator for Memory objects in heterogenous network.
 
-<<<<<<< HEAD
-# define helper functions for analytical BDS decoherence implementation, reference see recurrence protocol paper
-def _p_id(x_rate, y_rate, z_rate, t):
-    val = (1 + exp(-2*(x_rate+y_rate)*t) + exp(-2*(x_rate+z_rate)*t) + exp(-2*(z_rate+y_rate)*t)) / 4
-    return val
-
-
-def _p_xerr(x_rate, y_rate, z_rate, t):
-    val = (1 - exp(-2*(x_rate+y_rate)*t) - exp(-2*(x_rate+z_rate)*t) + exp(-2*(z_rate+y_rate)*t)) / 4
-    return val
-
-
-def _p_yerr(x_rate, y_rate, z_rate, t):
-    val = (1 - exp(-2*(x_rate+y_rate)*t) + exp(-2*(x_rate+z_rate)*t) - exp(-2*(z_rate+y_rate)*t)) / 4
-    return val
-
-
-def _p_zerr(x_rate, y_rate, z_rate, t):
-    val = (1 + exp(-2*(x_rate+y_rate)*t) - exp(-2*(x_rate+z_rate)*t) - exp(-2*(z_rate+y_rate)*t)) / 4
-    return val
-
-_meas_circuit = Circuit(2)
-_meas_circuit.measure(0)
-_meas_circuit.measure(1)
-_H_circuit = Circuit(2)
-_H_circuit.h(0)
-_H_circuit.h(1)
-_sDag_circuit = Circuit(2)
-_sDag_circuit.sdg(0)
-_sDag_circuit.sdg(1)
-
-
-class Memory(Entity):
-    """Individual single-atom memory.
-
-    This class models a single-atom memory, where the quantum state is stored as the spin of a single ion.
-    This class will replace the older implementation once completed.
-=======
     Equivalent to an array of single atom memories.
     The MemoryArray can be accessed as a list to get individual memories.
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 
     Attributes:
         name (str): label for memory array instance.
@@ -118,19 +68,6 @@ class Memory(Entity):
         self.memory_name_to_index = {}
         self.memo_type = memory_type
 
-<<<<<<< HEAD
-        self.fidelity = 0
-        self.raw_fidelity = fidelity
-        self.frequency = frequency
-        self.efficiency = efficiency
-        self.coherence_time = coherence_time  # coherence time in seconds
-        self.decoherence_rate = 1 / self.coherence_time if self.coherence_time > 0 else 0 # rate of decoherence to implement time dependent decoherence
-        self.wavelength = wavelength
-        self.qstate_key = timeline.quantum_manager.new()
-        self.memory_array = None
-        
-        self.atom_present = True
-=======
         for i in range(num_memories):
             memory_name = self.name + f"[{i}]"
             self.memory_name_to_index[memory_name] = i
@@ -143,7 +80,6 @@ class Memory(Entity):
             memory.attach(self)
             self.memories.append(memory)
             memory.set_memory_array(self)
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 
 class Yb1389States(Enum):
     S0 = auto()
@@ -154,301 +90,6 @@ class Yb556States(Enum):
     S0 = auto() # for 1S0 state
     LOST = auto() # for atom fallen out of trap
 
-<<<<<<< HEAD
-        # for photons in general single-heralded EG protocols
-        self.encoding_sh = copy(single_heralded)
-
-        # for photons with encoding type of time_bin
-        # self.encoding_tb = copy(time_bin)
-
-        # for photons with yb time_bin encoding
-        self.encoding_yb = copy(yb_time_bin)
-
-        # keep track of previous BSM result (for entanglement generation)
-        # -1 = no result, 0/1 give detector number
-        self.previous_bsm = -1
-
-        # keep track of entanglement
-        self.entangled_memory = {'node_id': None, 'memo_id': None}
-
-        # keep track of current memory write (ignore expiration of past states)
-        self.expiration_event = None
-        self.excited_photon = None
-
-        self.next_excite_time = 0
-
-        self.basis = 0 # basis we are measuring in this round (for fidelity)
-        #   0 == "X"
-        #   1 == "Y"
-        #   2 == "Z"
-
-    def init(self):
-        pass
-
-    def set_memory_array(self, memory_array: MemoryArray):
-        self.memory_array = memory_array
-
-    def excite(self, encoding_type, dst="", protocol="bk") -> None:
-        """Method to excite memory and potentially emit a photon.
-
-        If it is possible to emit a photon, the photon may be marked as null based on the state of the memory.
-
-        Args:
-            dst (str): name of destination node for emitted photon (default "").
-            protocol (str): Valid values are "bk" (for Barrett-Kok protocol) or "sh" (for single heralded)
-
-        Side Effects:
-            May modify quantum state of memory.
-            May schedule photon transmission to destination node.
-        """
-
-        # if can't excite yet, do nothing
-        if self.timeline.now() < self.next_excite_time:
-            return
-
-        # create photon
-        if encoding_type == "time_bin":
-            photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding_tb, 
-            quantum_state=self.qstate_key, use_qm=True)
-            # keep track of memory initialization time
-            self.generation_time = self.timeline.now()
-            self.last_update_time = self.timeline.now()
-            self.encoding = self.encoing_tb
-        if encoding_type == "yb_time_bin":
-            photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding_yb, 
-            quantum_state=self.qstate_key, use_qm=True)
-            # keep track of memory initialization time
-            self.generation_time = self.timeline.now()
-            self.last_update_time = self.timeline.now()
-            self.encoding = self.encoding_yb
-        elif protocol == "bk":
-            photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding,
-                            quantum_state=self.qstate_key, use_qm=True)
-        elif protocol == "sh":
-            photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=self.encoding_sh, 
-                            quantum_state=self.qstate_key, use_qm=True)
-            # keep track of initialization time
-            self.generation_time = self.timeline.now()
-            self.last_update_time = self.timeline.now()
-        else:
-            raise ValueError("Invalid protocol type {} specified for memory.exite()".format(protocol))
-
-        photon.timeline = None  # facilitate cross-process exchange of photons
-        photon.is_null = True
-        photon.add_loss(1 - self.efficiency)
-
-        if self.frequency > 0:
-            period = 1e12 / self.frequency
-            self.next_excite_time = self.timeline.now() + period
-
-        # emission = Process(self._receivers[0], 'get', [photon], {'dst': dst})
-        # em_time = self.timeline.now() + self.encoding['em_delay']
-        # em_event = Event(em_time, emission)
-        # self.timeline.schedule(em_event)
-
-        # send to receiver
-        self._receivers[0].get(photon, dst=dst)
-        self.excited_photon = photon
-
-    def expire(self) -> None:
-        """Method to handle memory expiration.
-
-        Is scheduled automatically by the `set_plus` memory operation.
-
-        If the quantum memory has been explicitly involved in application after entanglement distribution, do not expire.
-            Some simplified applications do not necessarily need to modify the is_in_application attribute.
-            Some more complicated applications, such as probe state preparation for distributed quantum sensing,
-            may change is_in_application attribute to keep memory from expiring during study.
-        
-        Side Effects:
-            Will notify upper entities of expiration via the `pop` interface.
-            Will modify the quantum state of the memory.
-        """
-
-        if self.is_in_application:
-            pass
-
-        else:
-            if self.excited_photon:
-                self.excited_photon.is_null = True
-
-            self.reset()
-            # pop expiration message
-            self.notify(self)
-
-    def reset(self) -> None:
-        """Method to clear quantum memory.
-
-        Will reset quantum state to |0> and will clear entanglement information.
-
-        Side Effects:
-            Will modify internal parameters and quantum state.
-        """
-
-        self.fidelity = 0
-        self.generation_time = -1
-        self.last_update_time = -1
-
-        self.timeline.quantum_manager.set([self.qstate_key], [complex(1), complex(0)])
-        self.entangled_memory = {'node_id': None, 'memo_id': None}
-        if self.expiration_event is not None:
-            self.timeline.remove_event(self.expiration_event)
-            self.expiration_event = None
-
-    def update_state(self, state: List[complex]) -> None:
-        """Method to set the memory state to an arbitrary pure state.
-
-        Args:
-            state (List[complex]): array of amplitudes for pure state in Z-basis.
-
-        Side Effects:
-            Will modify internal quantum state and parameters.
-            May schedule expiration event.
-        """
-
-        self.timeline.quantum_manager.set([self.qstate_key], state)
-        self.previous_bsm = -1
-        self.entangled_memory = {'node_id': None, 'memo_id': None}
-
-        # schedule expiration
-        if self.coherence_time > 0:
-            self._schedule_expiration()
-
-    def bds_decohere(self) -> None:
-        """Method to decohere stored BDS in quantum memory according to the single-qubit Pauli channels.
-
-        During entanglement distribution (before application phase),
-        BDS decoherence can be treated analytically (see entanglement purification paper for explicit formulae).
-
-        Side Effects:
-            Will modify BDS diagonal elements and last_update_time.
-        """
-
-        if self.decoherence_errors is None:
-            # if not considering time-dependent decoherence then do nothing
-            pass
-
-        else:
-            time = (self.timeline.now() - self.last_update_time) * 1e-12  # duration of memory idling (in s)
-            if time > 0 and self.last_update_time > 0:  # time > 0 means time has progressed, self.last_update_time > 0 means the memory has not been reset
-
-                x_rate, y_rate, z_rate = self.decoherence_rate * self.decoherence_errors[0], \
-                                        self.decoherence_rate * self.decoherence_errors[1], \
-                                        self.decoherence_rate * self.decoherence_errors[2]
-                p_I, p_X, p_Y, p_Z = _p_id(x_rate, y_rate, z_rate, time), \
-                                    _p_xerr(x_rate, y_rate, z_rate, time), \
-                                    _p_yerr(x_rate, y_rate, z_rate, time), \
-                                    _p_zerr(x_rate, y_rate, z_rate, time)
-
-                state_now = self.timeline.quantum_manager.states[self.qstate_key].state  # current diagonal elements
-                transform_mtx = array([[p_I, p_Z, p_X, p_Y],
-                                       [p_Z, p_I, p_Y, p_X],
-                                       [p_X, p_Y, p_I, p_Z],
-                                       [p_Y, p_X, p_Z, p_I]])  # transform matrix for diagonal elements
-                state_new = transform_mtx @ state_now  # new diagonal elements after decoherence transformation
-            
-                log.logger.debug(f'{self.name}: before f={state_now[0]:.6f}, after f={state_new[0]:.6f}')
-                
-                # update the quantum state stored in quantum manager for self and entangled memory
-                keys = self.timeline.quantum_manager.states[self.qstate_key].keys
-                self.timeline.quantum_manager.set(keys, state_new)
-
-                # update the last_update_time of self
-                # note that the attr of entangled memory should not be updated right now,
-                # because decoherence has not been applied there
-                self.last_update_time = self.timeline.now()
-
-    def _schedule_expiration(self) -> None:
-        if self.expiration_event is not None:
-            self.timeline.remove_event(self.expiration_event)
-
-        decay_time = self.timeline.now() + int(self.cutoff_ratio * self.coherence_time * 1e12)
-        process = Process(self, "expire", [])
-        event = Event(decay_time, process)
-        self.timeline.schedule(event)
-
-        self.expiration_event = event
-
-    def update_expire_time(self, time: int):
-        """Method to change time of expiration.
-
-        Should not normally be called by protocols.
-
-        Args:
-            time (int): new expiration time.
-        """
-
-        time = max(time, self.timeline.now())
-        if self.expiration_event is None:
-            if time >= self.timeline.now():
-                process = Process(self, "expire", [])
-                event = Event(time, process)
-                self.timeline.schedule(event)
-        else:
-            self.timeline.update_event_time(self.expiration_event, time)
-
-    def get_expire_time(self) -> int:
-        return self.expiration_event.time if self.expiration_event else inf
-
-    def notify(self, msg: Dict[str, Any]):
-        for observer in self._observers:
-            observer.memory_expire(self)
-
-    def detach(self, observer: 'EntanglementProtocol'):  # observer could be a MemoryArray
-        if observer in self._observers:
-            self._observers.remove(observer)
-
-    def get_bds_state(self):
-        """Method to get state of memory in BDS formalism.
-
-        Will automatically call the `bds_decohere` method.
-        """
-        self.bds_decohere()
-        state_obj = self.timeline.quantum_manager.get(self.qstate_key)
-        state = state_obj.state
-        return state
-
-    def get_bds_fidelity(self) -> float:
-        """Will get the fidelity from the BDS state
-
-        Return:
-            (float): the fidelity of the BDS state
-        """
-        state_obj = self.timeline.quantum_manager.get(self.qstate_key)
-        state = state_obj.state
-        return state[0]
-    
-    def measure(self) -> float:
-        key0 = self.qstate_key
-        key1 = self.timeline.get_entity_by_name(self.entangled_memory['node_id'] + '.memo').qstate_key
-        keys = [key0,key1]
-
-        # print(self.timeline.quantum_manager.states[0].state)
-        # if self.timeline.quantum_manager.states[0].state != self.timeline.quantum_manager.states[1].state:
-        #     raise ValueError('soemthing weird')
-        qm = self.timeline.quantum_manager
-
-        for k in keys:
-            if len(qm.states[k].state) != 4:
-                log.logger.warning('dark count state')
-                qm.set([k], [1, 0])
-
-        if self.basis != 2:
-            if self.basis == 1:
-                qm.run_circuit(_sDag_circuit, keys)
-            qm.run_circuit(_H_circuit, keys).keys()
-
-
-        meas = qm.run_circuit(_meas_circuit, keys, self.get_generator().random())
-
-        if meas[key0] == meas[key1]:
-            result = 1
-        else:
-            result = -1
-
-        return result, self.basis
-=======
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 
 class Yb(Memory):
 

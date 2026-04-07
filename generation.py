@@ -18,8 +18,13 @@ from typing import List, TYPE_CHECKING, Dict, Any
 if TYPE_CHECKING:
     from memory import Memory
 <<<<<<< HEAD
+<<<<<<< HEAD
     from sequence.components.bsm import SingleAtomBSM
     from custom_node import Node
+=======
+    from sequence.components.bsm import BSM
+    from nodes import Node
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 =======
     from sequence.components.bsm import BSM
     from nodes import Node
@@ -43,6 +48,9 @@ from math import e, ceil
 from sequence.components.bsm import _set_state_with_fidelity
 from message import HetEntanglementGenerationMessage
 from sequence.constants import BARRET_KOK
+<<<<<<< HEAD
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
+=======
 >>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 
 class HetEGA(EntanglementGenerationA):
@@ -59,6 +67,7 @@ class HetEGA(EntanglementGenerationA):
         self.early_bin = [-1, -1]
         self.late_bin = [-1, -1]
 
+<<<<<<< HEAD
 <<<<<<< HEAD
     _plus_state = [sqrt(1/2), sqrt(1/2)]
     _flip_circuit = Circuit(1)
@@ -124,6 +133,16 @@ class HetEGA(EntanglementGenerationA):
         self.late_click_types = [] # list of booleans determining whether late clicks were signals or not
         self.late_detectors = [] # list of detectors clicked in late time bin
 
+=======
+        self.detector_resolution = None
+        
+        self.early_click_types = [] # list of booleans determining whether early clicks were signals or not
+        self.early_detectors = [] # list of detectors clicked in early time bin
+
+        self.late_click_types = [] # list of booleans determining whether late clicks were signals or not
+        self.late_detectors = [] # list of detectors clicked in late time bin
+
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
         self.emit_delay = None
 
     # this is to add detector resolution to our existing bins
@@ -141,9 +160,13 @@ class HetEGA(EntanglementGenerationA):
         """
 
 <<<<<<< HEAD
+<<<<<<< HEAD
         # self.attempts += 1
 
         self.owner.attempts += 1
+=======
+        self.memory.attempts += 1
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 =======
         self.memory.attempts += 1
 >>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
@@ -154,6 +177,7 @@ class HetEGA(EntanglementGenerationA):
         if self not in self.owner.protocols:
             return
 
+<<<<<<< HEAD
 <<<<<<< HEAD
         if self.owner.attempts == 1:
             self.memory.efficiency = self.original_memory_efficiency
@@ -182,6 +206,11 @@ class HetEGA(EntanglementGenerationA):
         # update memory, and if necessary start negotiations for round
         if self.update_memory() and self.primary:
             self.qc_delay = self.owner.qchannels[self.middle].delay
+=======
+        # update memory, and if necessary start negotiations for round
+        if self.update_memory() and self.primary:
+            self.qc_delay = self.owner.qchannels[self.middle].delay
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
             # time required by memory between excitation and emission:
             self.emit_delay = self.memory.initialize_time + self.memory.cool_time + self.memory.state_prep_time + self.memory.excite_pulse_time
             # how long memory has already been in trap:
@@ -221,6 +250,9 @@ class HetEGA(EntanglementGenerationA):
 
         self.late_click_types = [] # list of booleans determining whether late clicks were signals or not
         self.late_detectors = [] # list of detectors clicked in late time bin
+<<<<<<< HEAD
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
+=======
 >>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 
     def update_memory(self) -> bool:
@@ -305,6 +337,7 @@ class HetEGA(EntanglementGenerationA):
         self.scheduled_events.append(event)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
         if self.ent_round == 1:
             self.memory.update_state(EntanglementGenerationTimeBin._plus_state)
         else:
@@ -321,6 +354,9 @@ class HetEGA(EntanglementGenerationA):
 =======
 >>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 
+=======
+
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
     def received_message(self, src: str, msg: HetEntanglementGenerationMessage) -> None:
         """Method to receive messages.
 
@@ -459,6 +495,7 @@ class HetEGA(EntanglementGenerationA):
             detector_num = msg.detector
             time = msg.time
 <<<<<<< HEAD
+<<<<<<< HEAD
             # resolution = msg.resolution
             resolution = 20000
 
@@ -501,6 +538,37 @@ class HetEGA(EntanglementGenerationA):
             else:
                 log.logger.info('Photon found outside a bin.')
 >>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
+=======
+            resolution = msg.resolution # detector resolution
+            click_type = msg.click_type # 0 for noise, 1 for signal, 2 for dark count
+
+            if click_type == None:
+                raise ValueError('\'click_type\' should be an int, not None. Message must have not passed through kwargs.')
+
+            log.logger.debug("{} received MEAS_RES={} at time={:,}, expected={:,}, resolution={}, click_type={}".format(
+                             self.owner.name, detector_num, time, self.expected_time, resolution, click_type))
+
+            if not self.detector_resolution: # only should occur once per attempt
+                self.detector_resolution = resolution
+                self.update_bins(resolution)
+
+            # if click_type == 2:
+            #     log.logger.info('Dark count')
+            # elif click_type == 3:
+            #     raise ValueError('shoudnt have decohere for yb')
+
+            # early time bin
+            if self.early_bin[0] <= time <= self.early_bin[1]:
+                self.early_click_types.append(click_type)
+                self.early_detectors.append(detector_num)
+            # late time bin
+            elif self.late_bin[0] <= time <= self.late_bin[1]:
+                self.late_click_types.append(click_type)
+                self.late_detectors.append(detector_num) 
+            # neither time bin
+            else:
+                log.logger.info('Photon found outside a bin.')
+>>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
         else:
             raise Exception("Invalid message {} received by EG on node {}".format(msg_type, self.owner.name))
 
@@ -510,6 +578,7 @@ class HetEGA(EntanglementGenerationA):
         self.memory.entangled_memory["memo_id"] = self.remote_memo_id
         self.memory.fidelity = self.memory.raw_fidelity
 
+<<<<<<< HEAD
 <<<<<<< HEAD
         self.update_resource_manager(self.memory, MemoryInfo.ENTANGLED)
 
