@@ -37,7 +37,7 @@ from sequence.components.bsm import SingleAtomBSM, SingleHeraldedBSM, Polarizati
 from encoding import time_bin, yb_time_bin
 from copy import copy
 from generation import HetEGB
-from sequence.topology.node import Node
+from sequence.topology.node import Node, QuantumRouter
 from qfc import QFC
 
 ## THIS IS MEANT TO BE A REPLACEMENT NOT AND INHERITANCE OF BSMNode

@@ -9,7 +9,7 @@ from enum import Enum, auto
 from typing import List, TYPE_CHECKING, Any, Dict, Tuple
 
 if TYPE_CHECKING:
-    from custom_node import QuantumRouter
+    from nodes import QuantumRouter
     from sequence.resource_management.memory_manager import MemoryInfo, MemoryManager
     from sequence.entanglement_management.entanglement_protocol import EntanglementProtocol
 

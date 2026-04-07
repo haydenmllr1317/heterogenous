@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, List, Dict
 
 if TYPE_CHECKING:
-    from custom_node import QuantumRouter
+    from nodes import QuantumRouter
     from sequence.network_management.reservation import Reservation
     from sequence.resource_management.memory_manager import MemoryInfo
 

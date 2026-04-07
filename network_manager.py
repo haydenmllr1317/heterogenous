@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from sequence.protocol import StackProtocol
 
 from sequence.message import Message
-from sequence.network_management.routing import StaticRoutingProtocol
+from sequence.network_management.routing_static import StaticRoutingProtocol
 from reservation import ResourceReservationProtocol, ResourceReservationMessage, RSVPMsgType
 from sequence.utils import log
 from sequence.network_management.network_manager import NetworkManagerMessage

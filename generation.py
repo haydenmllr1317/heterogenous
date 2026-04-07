@@ -17,18 +17,10 @@ from typing import List, TYPE_CHECKING, Dict, Any
 
 if TYPE_CHECKING:
     from memory import Memory
-<<<<<<< HEAD
-<<<<<<< HEAD
     from sequence.components.bsm import SingleAtomBSM
-    from custom_node import Node
-=======
+    from nodes import Node
     from sequence.components.bsm import BSM
     from nodes import Node
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
-=======
-    from sequence.components.bsm import BSM
-    from nodes import Node
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 
 from sequence.resource_management.memory_manager import MemoryInfo
 from sequence.entanglement_management.generation.generation_base import EntanglementGenerationA, EntanglementGenerationB
@@ -38,20 +30,12 @@ from sequence.kernel.process import Process
 from sequence.components.circuit import Circuit
 from sequence.utils import log
 from sequence.entanglement_management.generation import GenerationMsgType
-<<<<<<< HEAD
 from sequence.entanglement_management.generation import EntanglementGenerationMessage
 # from encoding import time_bin
 from math import e
-=======
-# from encoding import time_bin
-from math import e, ceil
 from sequence.components.bsm import _set_state_with_fidelity
 from message import HetEntanglementGenerationMessage
 from sequence.constants import BARRET_KOK
-<<<<<<< HEAD
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
-=======
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 
 class HetEGA(EntanglementGenerationA):
 
@@ -67,8 +51,6 @@ class HetEGA(EntanglementGenerationA):
         self.early_bin = [-1, -1]
         self.late_bin = [-1, -1]
 
-<<<<<<< HEAD
-<<<<<<< HEAD
     _plus_state = [sqrt(1/2), sqrt(1/2)]
     _flip_circuit = Circuit(1)
     _flip_circuit.x(0)
@@ -123,17 +105,6 @@ class HetEGA(EntanglementGenerationA):
 
         # self.atom_lost = False
         self.retrap_num = retrap_num
-=======
-        self.detector_resolution = None
-        
-        self.early_click_types = [] # list of booleans determining whether early clicks were signals or not
-        self.early_detectors = [] # list of detectors clicked in early time bin
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
-
-        self.late_click_types = [] # list of booleans determining whether late clicks were signals or not
-        self.late_detectors = [] # list of detectors clicked in late time bin
-
-=======
         self.detector_resolution = None
         
         self.early_click_types = [] # list of booleans determining whether early clicks were signals or not
@@ -142,7 +113,14 @@ class HetEGA(EntanglementGenerationA):
         self.late_click_types = [] # list of booleans determining whether late clicks were signals or not
         self.late_detectors = [] # list of detectors clicked in late time bin
 
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
+        self.detector_resolution = None
+        
+        self.early_click_types = [] # list of booleans determining whether early clicks were signals or not
+        self.early_detectors = [] # list of detectors clicked in early time bin
+
+        self.late_click_types = [] # list of booleans determining whether late clicks were signals or not
+        self.late_detectors = [] # list of detectors clicked in late time bin
+        
         self.emit_delay = None
 
     # this is to add detector resolution to our existing bins
@@ -159,30 +137,20 @@ class HetEGA(EntanglementGenerationA):
             Will send message through attached node.
         """
 
-<<<<<<< HEAD
-<<<<<<< HEAD
         # self.attempts += 1
 
         self.owner.attempts += 1
-=======
         self.memory.attempts += 1
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
-=======
-        self.memory.attempts += 1
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 
         log.logger.info(f"{self.name} protocol start with partner {self.remote_protocol_name}")
 
         # to avoid start after remove protocol
         if self not in self.owner.protocols:
             return
-
-<<<<<<< HEAD
-<<<<<<< HEAD
+        
         if self.owner.attempts == 1:
             self.memory.efficiency = self.original_memory_efficiency
             self.owner.atom_lost = False
-
 
         # update memory, and if necessary start negotiations for round
         if self.update_memory() and self.primary:
@@ -202,15 +170,10 @@ class HetEGA(EntanglementGenerationA):
             
         if self.owner.attempts == self.retrap_num:
             self.owner.attempts = 0
-=======
+
         # update memory, and if necessary start negotiations for round
         if self.update_memory() and self.primary:
             self.qc_delay = self.owner.qchannels[self.middle].delay
-=======
-        # update memory, and if necessary start negotiations for round
-        if self.update_memory() and self.primary:
-            self.qc_delay = self.owner.qchannels[self.middle].delay
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
             # time required by memory between excitation and emission:
             self.emit_delay = self.memory.initialize_time + self.memory.cool_time + self.memory.state_prep_time + self.memory.excite_pulse_time
             # how long memory has already been in trap:
@@ -250,10 +213,6 @@ class HetEGA(EntanglementGenerationA):
 
         self.late_click_types = [] # list of booleans determining whether late clicks were signals or not
         self.late_detectors = [] # list of detectors clicked in late time bin
-<<<<<<< HEAD
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
-=======
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 
     def update_memory(self) -> bool:
         """Method to handle necessary memory operations.
@@ -336,10 +295,8 @@ class HetEGA(EntanglementGenerationA):
         self.owner.timeline.schedule(event)
         self.scheduled_events.append(event)
 
-<<<<<<< HEAD
-<<<<<<< HEAD
         if self.ent_round == 1:
-            self.memory.update_state(EntanglementGenerationTimeBin._plus_state)
+            self.memory.update_state(self._plus_state)
         else:
             raise ValueError('Entanglement protocol isn\'t single-heralded as desired.')
         
@@ -351,12 +308,7 @@ class HetEGA(EntanglementGenerationA):
                 self.owner.atom_lost = True
 
         self.memory.excite(self.encoding_type, self.middle)
-=======
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 
-=======
-
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
     def received_message(self, src: str, msg: HetEntanglementGenerationMessage) -> None:
         """Method to receive messages.
 
@@ -494,20 +446,7 @@ class HetEGA(EntanglementGenerationA):
         elif msg_type is GenerationMsgType.MEAS_RES:  # from middle BSM to both non-primary and primary
             detector_num = msg.detector
             time = msg.time
-<<<<<<< HEAD
-<<<<<<< HEAD
-            # resolution = msg.resolution
-            resolution = 20000
 
-            log.logger.debug("{} received MEAS_RES={} at time={:,}, expected={:,}, resolution={}, round={}".format(
-                             self.owner.name, sign, time, self.expected_time, resolution, self.ent_round))
-            if valid_trigger_time(time, self.expected_time, resolution):   
-                # log.logger.warning("really got valid time.")   
-                self.psi_sign = sign 
-            else:
-                log.logger.info('{} BSM trigger time not valid'.format(self.owner.name)) # CHANGED FROM WARNING TO INFO
-
-=======
             resolution = msg.resolution # detector resolution
             click_type = msg.click_type # 0 for noise, 1 for signal, 2 for dark count
 
@@ -537,38 +476,13 @@ class HetEGA(EntanglementGenerationA):
             # neither time bin
             else:
                 log.logger.info('Photon found outside a bin.')
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
-=======
+
             resolution = msg.resolution # detector resolution
             click_type = msg.click_type # 0 for noise, 1 for signal, 2 for dark count
 
             if click_type == None:
                 raise ValueError('\'click_type\' should be an int, not None. Message must have not passed through kwargs.')
 
-            log.logger.debug("{} received MEAS_RES={} at time={:,}, expected={:,}, resolution={}, click_type={}".format(
-                             self.owner.name, detector_num, time, self.expected_time, resolution, click_type))
-
-            if not self.detector_resolution: # only should occur once per attempt
-                self.detector_resolution = resolution
-                self.update_bins(resolution)
-
-            # if click_type == 2:
-            #     log.logger.info('Dark count')
-            # elif click_type == 3:
-            #     raise ValueError('shoudnt have decohere for yb')
-
-            # early time bin
-            if self.early_bin[0] <= time <= self.early_bin[1]:
-                self.early_click_types.append(click_type)
-                self.early_detectors.append(detector_num)
-            # late time bin
-            elif self.late_bin[0] <= time <= self.late_bin[1]:
-                self.late_click_types.append(click_type)
-                self.late_detectors.append(detector_num) 
-            # neither time bin
-            else:
-                log.logger.info('Photon found outside a bin.')
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
         else:
             raise Exception("Invalid message {} received by EG on node {}".format(msg_type, self.owner.name))
 
@@ -578,8 +492,6 @@ class HetEGA(EntanglementGenerationA):
         self.memory.entangled_memory["memo_id"] = self.remote_memo_id
         self.memory.fidelity = self.memory.raw_fidelity
 
-<<<<<<< HEAD
-<<<<<<< HEAD
         self.update_resource_manager(self.memory, MemoryInfo.ENTANGLED)
 
         if self.primary:
@@ -606,11 +518,9 @@ class HetEGA(EntanglementGenerationA):
         # if real_events == 1:
         #     if a != 2:
         #         log.logger.warning('Dark count occured at ' + self.owner.name + '.')
-=======
         for event in self.scheduled_events:
             if event.process.activation == 'lose_atom' and event.time > (self.owner.timeline.now() + self.memory.measurement_time):
                 self.owner.timeline.remove_event(event)
->>>>>>> 1e886777b0e9f9344b951237a07276ab6e4460ec
 
         self.update_resource_manager(self.memory, MemoryInfo.ENTANGLED)
 
