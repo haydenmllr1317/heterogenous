@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 from sequence.message import Message
 from sequence.network_management.routing_static import StaticRoutingProtocol
-from reservation import ResourceReservationProtocol, ResourceReservationMessage, RSVPMsgType
+from reservation import ResourceReservationProtocol, RSVPMsgType, RSVPMessage
 from sequence.utils import log
 from sequence.network_management.network_manager import NetworkManagerMessage
 
@@ -80,7 +80,7 @@ class NetworkManager:
         """
 
         msg = kwargs.get("msg")
-        assert isinstance(msg, ResourceReservationMessage)
+        assert isinstance(msg, RSVPMessage)
         reservation = msg.reservation
         if reservation.initiator == self.owner.name:
             if msg.msg_type == RSVPMsgType.APPROVE:
@@ -144,7 +144,8 @@ def NewNetworkManager(owner: "QuantumRouter", memory_array_name: str) -> "Networ
     """
     swapping_success_rate = 1.0
     manager = NetworkManager(owner, [])
-    routing = StaticRoutingProtocol(owner, owner.name + ".StaticRoutingProtocol", {})
+    # routing = StaticRoutingProtocol(owner, owner.name + ".StaticRoutingProtocol", {})
+    routing = StaticRoutingProtocol(owner, owner.name + ".StaticRoutingProtocol")
     rsvp = ResourceReservationProtocol(owner, owner.name + ".RSVP", memory_array_name)
     rsvp.set_swapping_success_rate(swapping_success_rate)
     routing.upper_protocols.append(rsvp)

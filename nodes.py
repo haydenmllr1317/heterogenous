@@ -34,7 +34,6 @@ from network_manager import NewNetworkManager, NetworkManager
 from encoding import *
 from sequence.utils import log
 from sequence.components.bsm import SingleAtomBSM, SingleHeraldedBSM, PolarizationBSM
-from encoding import time_bin, yb_time_bin
 from copy import copy
 from generation import HetEGB
 from sequence.topology.node import Node, QuantumRouter
@@ -97,7 +96,6 @@ class HetBSMNode(Node):
         self.add_component(bsm)
         self.set_first_component(bsm_name)
 
-        self.qfc_noise_counter = 0
         self.conversion_counter = 0
         self.noise_to_detector = 0
         self.detectors_got = 0
@@ -170,8 +168,11 @@ class HetQR(Node):
         """
 
         super().__init__(name, tl, seed, gate_fid, meas_fid)
-        if not component_templates:
-            component_templates = {}
+        # if not component_templates: ###NOTE CHANGING THIS AS I THINK IS DUPLICITOUS
+        #     component_templates = {}
+
+        # TODO make component templates include memo_type so I don't have to pass in
+        # TODO make component templates include wavelength so I don't have to pass in
 
         # create memory array object with optional args
         self.memo_arr_name = name + ".MemoryArray"

@@ -1,21 +1,24 @@
-# TODO describe module
+"""Models for simuulation of memory components in a heterogenous quantum network. # NOTE HM done
 
-from typing import Any, List, TYPE_CHECKING
-from numpy import exp, array
+This model builds on SeQUeNCe's memory module, but adds an altered memory array class (HetMemoryArray), and two new memory class (Yb and uW).
+HetMemoryArray inhereits from MemoryArray with all the same functionality except enabling alternative types of memories.
+NOTE: If MemoryArray would allow component_templates or memo_type inputs, we wouldn't need a separate class for HetMemoryArray.
+Yb and uW both inherit from Memory, but have different parameters and methods to reflect their physical differences.
 
+"""
+
+from typing import List, TYPE_CHECKING
 if TYPE_CHECKING:
     from sequence.kernel.timeline import Timeline
-
-from photon import Photon
+from photon import HetPhoton
 from sequence.kernel.entity import Entity
-from sequence.constants import EPSILON
 from sequence.utils import log
-# from generation import EntanglementGenerationTimeBin as EGTB
 from enum import Enum, auto
 from sequence.components.circuit import Circuit
-from sequence.components.bsm import _set_state_with_fidelity
 from sequence.components.memory import Memory, MemoryArray
 from math import sqrt, e
+from sequence.kernel.quantum_manager import QuantumManager
+from sequence.constants import BELL_DIAGONAL_STATE_FORMALISM
 
 _meas_circuit = Circuit(2)
 _meas_circuit.measure(0)
@@ -23,19 +26,16 @@ _meas_circuit.measure(1)
 _H_circuit = Circuit(2)
 _H_circuit.h(0)
 _H_circuit.h(1)
-# _sDag_circuit = Circuit(2)
-# _sDag_circuit.sdg(0)
-# _sDag_circuit.sdg(1)
-_psi_plus = [complex(0), complex(sqrt(1 / 2)), complex(sqrt(1 / 2)), complex(0)]
 
 _photon_meas_circuit = Circuit(1)
 _photon_meas_circuit.measure(0)
 
 
 class HetMemoryArray(MemoryArray):
-    """Aggregator for Memory objects in heterogenous network.
+    """Aggregator for Memory objects in heterogenous network. # NOTE HM done
 
     Equivalent to an array of single atom memories.
+    Also equivalent to MemoryArray except can be initialized with new memory types.
     The MemoryArray can be accessed as a list to get individual memories.
 
     Attributes:
@@ -44,29 +44,38 @@ class HetMemoryArray(MemoryArray):
         memories (List[Memory]): list of all memories.
     """
 
-    def __init__(self, name: str, timeline: "Timeline", num_memories=10,
-                 memory_type = None, fidelity=0.85, frequency=80e6, efficiency=1,
-                 coherence_time=-1, wavelength=500,
-                 decoherence_errors: List[float] = None, cutoff_ratio = 1):
-        """Constructor for the Memory Array class.
+    def __init__(self, name: str, timeline: "Timeline", memory_type: str, num_memories=10, 
+                 fidelity=0.85, frequency=80e6, efficiency=1,coherence_time=-1, wavelength=500,
+                 decoherence_errors: List[float] = None, cutoff_ratio = 1, cutoff_flag: bool = True):
+        """Constructor for the Heterogenous Memory Array class.
 
         Args:
             name (str): name of the memory array instance.
             timeline (Timeline): simulation timeline.
+            memory_type (str): type of memories in the array (should be either 'Yb' or 'uW').
             num_memories (int): number of memories in the array (default 10).
             fidelity (float): fidelity of memories (default 0.85).
             frequency (float): maximum frequency of excitation for memories (default 80e6).
             efficiency (float): efficiency of memories (default 1).
             coherence_time (float): average time (in s) that memory state is valid (default -1 -> inf).
             wavelength (int): wavelength (in nm) of photons emitted by memories (default 500).
-            decoherence_errors (List[int]): pauli decoherence errors. Passed to memory object.
+            decoherence_errors (list[int]): pauli decoherence errors. Passed to memory object.
             cutoff_ratio (float): the ratio between cutoff time and memory coherence time (default 1, should be between 0 and 1).
+            cutoff_flag (bool): Flag to enable or disable expiry events
         """
 
         Entity.__init__(self, name, timeline)
-        self.memories = []
+        self.memories: list[Memory] = []
         self.memory_name_to_index = {}
-        self.memo_type = memory_type
+        self.memo_type = memory_type # TODO check if this needs to be saved as a class feature 
+
+        if decoherence_errors is not None:
+            assert QuantumManager.get_active_formalism() == BELL_DIAGONAL_STATE_FORMALISM, (
+                "Decoherence errors can only be set when formalism is Bell Diagonal")
+
+        # Set the default pauli errors if BDS formalism
+        if QuantumManager.get_active_formalism() == BELL_DIAGONAL_STATE_FORMALISM and decoherence_errors is None:
+            decoherence_errors = [1/3, 1/3, 1/3]
 
         for i in range(num_memories):
             memory_name = self.name + f"[{i}]"
@@ -81,18 +90,72 @@ class HetMemoryArray(MemoryArray):
             self.memories.append(memory)
             memory.set_memory_array(self)
 
+# class for electronic states of Yb atoms in Yb memory class for 1389nm emission
+# TODO check if we even need this anymore/give some justification
 class Yb1389States(Enum):
-    S0 = auto()
-    P0 = auto()
-    LOST = auto()
+    S0 = auto()     # for 1S0 state
+    P0 = auto()     # for 3P0 state
+    LOST = auto()   # for atom fallen out of trap
 
+
+# class for electronic states of Yb atoms in Yb memory class for 1389nm emission
+# TODO check if we even need this anymore/give some justification
 class Yb556States(Enum):
-    S0 = auto() # for 1S0 state
-    LOST = auto() # for atom fallen out of trap
+    S0 = auto()     # for 1S0 state
+    LOST = auto()   # for atom fallen out of trap
 
 
 class Yb(Memory):
+    """ Yb memory class.     #NOTE HM done except for excite, measure, and set_wavelength methods, which are still being worked on
 
+    This class models a single Yb atom memory, where the quantum state in stored in the nuclear spin of a single atom.
+    This class is follows Li et al.'s work on quantum networking with an Yb-171 array (https://arxiv.org/abs/2502.17406).
+    The methods and parameterization are according to the paper, conversations with Dr. Michael Bishof of Argonne National Lab, and other literature on Yb-171.
+
+    I will count these parameters and the EG step they occur in simply for keeping track in the paper.
+
+    Attributes:
+        name (str): name of the memory instance.
+        timeline (Timeline): simulation timeline.
+        fidelity (float): initial fidelity of memory.
+        frequency (float): maximum frequency of excitation for memory.
+        efficiency (float): efficiency of memories.                                                                 #1
+        coherence_time (float): average time (in s) that memory state is valid.                                     #2
+        decoherence_rate (float): rate of decoherence to implement time dependent decoherence.
+        wavelength (int): wavelength (in nm) of photons emitted by memories.                                        #3
+        original_memory_efficiency (float): initial efficiency of memories before atom loss. # TODO Do we still need this? is it duplicitous with atom state?
+        time_after_excitement (int): simulation time right after excitement, for use in decoherence calculations.
+        atom_state (Yb1389States or Yb556States): Enum for electronic state of Yb atom                              #4
+        state_lifetime (int): lifetime of the excited state of Yb, for calculatting emission prob.                  #5
+        S0_decay (float): branching proportion for decay from 3D1 to 1S0 state                                      #6
+        P0_decay (float): branching proportion for decay from 3D1 to 3P0 state                                      #7
+        LOST_decay (float): branching proportion for decay from 3D1 to LOST state                                   #8
+        atom_lifetime (int): lifetime of the atom in the trap, for calculating atom loss.                           #9
+        lifetime_reload_time (int): time after which we reload atoms to counter loss from atom_lifetime             #10
+        psi_sign (int): notation for sign of rour Bell state. 1 for psi+, -1 for psi-
+        attempts (int): num of EG attempts since last atom retrap
+        retrup_num (int): number of EG attempts before we need to reload atom array                                 #11                   
+        need_to_retrap (bool): flag to indicate it's time for the atom to be retrapped
+        retrap_time (int): time it takes to retrap an atom (reload time of the array)                               #12 (STEP 1/6 of EG)
+        initialize_time (int): time to prepare Yb in ground state (each EG attempt)                                 #13 (STEP 2/6 of EG)
+        cool_time (int): time to cool Yb after initialization (each EG attempt)                                     #14 (STEP 3/6 of EG)
+        clock_pulse_time (int): time to promote Yb to clock state (where qubit is encoded)                          #15 (STEP 4(a)/6 of EG)
+        raman_half_pi_pulse_time (int): time for pulse to create |+> superposition state                            #16 (STEP 4(b)/6 of EG)
+        state_prep_time (int): time for state preparation (sum of previous two attributes)
+        excite_pulse_time (int): time to excite Yb (for photon emission in EG)                                      #17 (STEP 5(a)/6 of EG)
+        bin_width (int): width of time bin for photon detection in EG                                               #18 (STEP 5(b)/6 of EG)
+        bin_gap (int): gap between end of first time bin and beginning of pulses for second time bin in EG          #19 (STEP 5(c)/6 of EG)
+        phase_flip_time (int): time to apply phase flip gate on qubit state                                         #20 (STEP 5(d)/6 of EG)
+        bin_separation (int): time between the two time bins in EG (sum of prev. 3 attributes)
+        to_x_basis_time (int): time to rotate to X basis, just raman_half_pi_pulse_time here
+        measurement_time (int): time to measure Yb state in Z basis                                                 #21 (STEP 6/6 of EG)
+        measurement_fidelity (float): readout fidelity for Z basis measurement                                      #22
+        CX_fidelity (float): fidelity for CX gate (used in entanglement swapping)                                   #23
+        atom_bsm_time (int): time to perform Bell state measurement on two atoms (used in entanglement swapping)    #24
+
+    """
+
+    # self explanatory kets:
     _plus_state = [sqrt(1/2), sqrt(1/2)]
     _minus_state = [sqrt(1/2), -sqrt(1/2)]
     _zero_ket = [1,0]
@@ -100,66 +163,100 @@ class Yb(Memory):
     def __init__(self, name: str, timeline: "Timeline", fidelity: float, frequency: float,
                  efficiency: float, coherence_time: float, wavelength: int):
         
+        """ Constructor for the Yb class.
+
+        Args:
+            name (str): name of the memory instance.
+            timeline (Timeline): simulation timeline.
+            fidelity (float): initial fidelity of memory.
+            frequency (float): maximum frequency of excitation for memory.
+            efficiency (float): efficiency of memories.
+            coherence_time (float): average time (in s) that memory state is valid.
+            decoherence_rate (float): rate of decoherence to implement time dependent decoherence.
+            wavelength (int): wavelength (in nm) of photons emitted by memories.
+        """
+        
         super().__init__(name, timeline, fidelity, frequency, efficiency, coherence_time, wavelength)
 
-        # wavelength, coherence, efficiency: 3
-
+        # GENERAL PARAMETERS
         self.original_memory_efficiency = self.efficiency
-
-        self.counter = 0
         self.time_after_excitement = None
-
-        self.retrap_time = 500_000_000_000 #4 step1
-        self.psi_sign = None # 1 for psi+, -1 for psi-
-        self.attempts = 0
+        self.atom_state = None
+        self.state_lifetime = None
+        self.S0_decay = 0.354     ###0.133 
+        self.P0_decay = 0.637     ###0.863
+        self.LOST_decay = 0.009   ###0.003
+        self.atom_lifetime = None
+        self.lifetime_reload_time = None
+        self.psi_sign = None # 1 for psi+, -1 for psi- # TODO decide whether to stick with this or only have psi+
+        self.attempts = 0   # TODO, can we fold attempts from node and form memory into just one variable?
+        self.retrap_num = None
         self.need_to_retrap = False
 
-        self.initialize_time = None          #5 step2
-        self.cool_time = None                #6 step3
-        self.clock_pulse_time = None         #7 step4(a)
-        self.raman_half_pi_pulse_time = None #8 step4(b)
+        # ENTANGLEMENT GENERATION PARAMETERS PER STEP
+
+        #### STEP 1: RESET
+        self.retrap_time = 500_000_000_000
+
+        #### STEP 2: INITIALIZATION
+        self.initialize_time = None
+
+        #### STEP 3: COOLING
+        self.cool_time = None
+
+        #### STEP 4: PREPARATION
+        self.clock_pulse_time = None
+        self.raman_half_pi_pulse_time = None
         self.state_prep_time = None
-        self.excite_pulse_time = None        #9 step5(a)
-        self.bin_width = None                #10 step5(b) detection window
+
+        ##### STEP 5: GENERATION
+        self.excite_pulse_time = None
+        self.bin_width = None
         self.bin_gap = None
-        self.phase_flip_time = None          #11 step5(c)
-        self.bin_separation = None           #12 step5(d)
-    
-        self.atom_state = None               #13
-        self.retrap_num = None               #14
-        self.to_x_basis_time = None
-        self.measurement_time = None         #15 step6
-        self.state_lifetime = None           #16
-        self.atom_lifetime = None            #17
-        self.lifetime_reload_time = None     #18
+        self.phase_flip_time = None
+        self.bin_separation = None
         
-        self.S0_decay = 0.354     ###0.133   #19 1S0 branching proportion
-        self.P0_decay = 0.637     ###0.863   #20 3P0 branching proportion
-        self.LOST_decay = 0.009   ###0.003   #21 LOST branching proportion
-        self.measurement_fidelity = 0.995    #22 is readout fidelity (set to 99.5)
-        #################################    #23 for 2-qubit gate fidelity
-        #################################    #24 for CX + Hadamard gate time
-
-        # TODO what is 2-qubit gate fidelity? (0.997 is Infleqtion's result, 0.995 might be good default)
-
+        #### STEP 6: MEASUREMENT
+        self.to_x_basis_time = None
+        self.measurement_time = None
+        self.measurement_fidelity = 0.995 # NOTE need to add # TODO change in set_wavelength??
+    
+        # SWAPPING PARAMETERS
+        self.CX_fidelity = None # TODO what is 2-qubit gate fidelity? (0.997 is Infleqtion's result, 0.995 might be good default)
+        self.atom_bsm_time = None # TODO how long does CX + Hadamard gate take? Also, do I even use this??
 
     def excite(self, dst="") -> None:
+        """ Method to excite Yb atom for photon emission during entanglement generation.
+
+        Called during entanglement generation (by HetEGA) to excite Yb atom and create and sent photon to destination.
+
+        Args:
+            dst (str): destination for emitted photon (default "").
+
+        Side Effects:
+            Calls atom_transition() which updates atom_state and efficiency.
+
+        
+        
+        """
 
         self.time_after_excitement = self.owner.timeline.now() + self.bin_separation # used for decoherence during round trip
         
         # if can't excite yet, do nothing
-        if self.timeline.now() < self.next_excite_time: # TODO can we initialize frequency as Inf?
+        if self.timeline.now() < self.next_excite_time:
             return
         
+        # excite the atom, resulting in atom_state and efficiency changes, and returning the wavelength for our photon
         wavelength = self.atom_transition()
 
+        # log if wrong transition or atom lost
         if wavelength != self.wavelength:
             log.logger.info('Photon with unideal wavelength of ' + str(wavelength) + ' emmited (wanted ' + str(self.wavelength) + ').')
 
 
         # yb_encoding = {'name': 'yb_time_bin', 'bin_separation': self.bin_separation, 'raw_fidelity': 1.0}
-        yb_encoding = {'name': 'yb_time_bin'}
-        photon = Photon("", self.timeline, wavelength=wavelength, location=self.name, encoding_type=yb_encoding, 
+        yb_encoding = {'name': 'yb_time_bin', 'keep_photon': True}
+        photon = HetPhoton("", self.timeline, wavelength=wavelength, location=self.name, encoding_type=yb_encoding, 
         quantum_state=self.qstate_key, use_qm=True) #TODO ADD A WAY TO POINT TOWARDS THE ACTUAL FOUR_VECTOR ENTANGLED STATE (FOR ATOM AND PHOTON)
         # keep track of memory initialization time
         # self.generation_time = self.timeline.now() # commented this out cuz I don't think we need
@@ -171,7 +268,8 @@ class Yb(Memory):
         # if photon.loss != 0:
         #     raise ValueError(f'{photon.name} just created, should have zero loss, not {photon.loss}.')
 
-        if self.frequency > 0: # TODO can we get rid of freq or set to inf? I don't think it effects anything but still
+        # set next_excite_time
+        if self.frequency > 0:
             period = 1e12 / self.frequency
             self.next_excite_time = self.timeline.now() + period
 
@@ -189,21 +287,33 @@ class Yb(Memory):
 
     
     def initialize_cool_prep(self) -> int:
+        """ Method to initialize, cool, and prepare Yb for entanglement generation.
+
+        Called during entanglement generation (by HetEGA) to conduct intialization, cooling, and preparation steps.
+
+        Returns:
+            total_time (int): total time initialization, cooling, and preparation took.
+
+        Side Effects:
+            Updates atom state and memory efficiency according to branching ratios for initialization.
+        """
+
+        # RESET
         if self.need_to_retrap:
             self.need_to_retrap = False
             added_delay = self.retrap_time
-            if self.wavelength == 1389:
+            if self.wavelength == 1389:     # reset state and efficiency
                 self.atom_state = Yb1389States.P0
                 self.efficiency = self.original_memory_efficiency
-            elif self.wavelength == 556:
+            elif self.wavelength == 556:    # reset state and efficiency
                 self.atom_state = Yb556States.S0
                 self.efficiency = self.original_memory_efficiency
         else:
             added_delay = 0
 
-        # 3% loss due to depumping from 3P0 to 1S0
+        # INITIALIZATION
         if self.wavelength == 1389 and self.atom_state != Yb1389States.LOST:
-            if self.get_generator().random() >= .975:
+            if self.get_generator().random() >= .975: # ~3% loss due to depumping from 3P0 to 1S0
                 self.atom_state = Yb1389States.LOST
                 self.efficiency = 0
                 log.logger.info("Atom " + str(self.name) + " lost in depumping.")
@@ -211,27 +321,38 @@ class Yb(Memory):
                 # if not lost, atoms should already be in correct state here
                 if self.wavelength == 1389:
                     self.atom_state = Yb1389States.P0
+
+        # PREPARATION
         if self.efficiency != 0:
             self.update_state(self._plus_state)
             log.logger.info('Atom ' + str(self.name) + ' succesfully prepared in |+>.')
-        # else:
-        #     raise ValueError('Efficiency shouldnt be zero in current trials.')
 
+        # ADD COOLING TIME
         total_time = self.initialize_time + self.cool_time + self.state_prep_time + added_delay
         return total_time
     
     def atom_transition(self) -> bool:
-        # dict of decay states with a probability, wavelength tuple as the values
+        """ Method to transition state of Yb atom during excitation step of entanglement generation.
+
+        Called by excite() method during entanglement generation to transition state of Yb atom according to branching ratios for decay from excited state.
+
+        Returns:
+            wavelength (int): wavelength of emitted photon, or 999 if transition was wrong (but atom survive), or None if atom lost.
+
+        Side Effects:
+            Updates atom state and memory efficiency according to branching ratios for decay from excited state.
+        """
+        
         if self.wavelength == 1389:
             if self.atom_state == Yb1389States.LOST:
                 return None
             elif self.atom_state == Yb1389States.P0:
-                if self.get_generator().random() <= self.P0_decay:
+                if self.get_generator().random() <= self.P0_decay:                          # 3P0 transition (correct, Yb emits 1389nm photon)
                     return 1389
-                elif self.get_generator().random() <= (self.P0_decay + self.S0_decay):
+                elif self.get_generator().random() <= (self.P0_decay + self.S0_decay):      # 3P1 transition (incorrect, but Yb survives)
                     self.atom_state = Yb1389States.S0
                     return 999
-                else:
+                else:                                                                       # 3P2 transition causes Yb to fall out of trap
                     log.logger.info(f'Atom {self.name} lost in transition.')
                     self.atom_state = Yb1389States.LOST
                     self.efficiency = 0
@@ -241,7 +362,7 @@ class Yb(Memory):
         elif self.wavelength == 556:
             if self.atom_state == Yb556States.LOST:
                 return None
-            elif self.atom_state == Yb556States.S0:
+            elif self.atom_state == Yb556States.S0:                                         # correct transition, Yb emits 556nm photon
                 return 556
             else:
                 raise ValueError(f'Prior to transition, atom is incorrectly in {self.atom_state}.' )
@@ -405,7 +526,7 @@ class uW(Memory):
         num = k-1
         return num
     
-    def transduce(self, photon: Photon) -> Photon:
+    def transduce(self, photon: HetPhoton) -> HetPhoton:
         photon.wavelength = self.output_wavelength
         photon.add_loss(1 - self.transducer_efficiency)
         noise_num = self.noise_to_num()
@@ -420,8 +541,8 @@ class uW(Memory):
         if self.timeline.now() < self.next_excite_time: # TODO can we initialize frequency as Inf?
             return
 
-        uw_encoding = {'name': 'uw_time_bin'}
-        photon = Photon("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=uw_encoding, 
+        uw_encoding = {'name': 'uw_time_bin', 'keep_photon': True}
+        photon = HetPhoton("", self.timeline, wavelength=self.wavelength, location=self.name, encoding_type=uw_encoding, 
         quantum_state=self.qstate_key, use_qm=True) #TODO ADD A WAY TO POINT TOWARDS THE ACTUAL FOUR_VECTOR ENTANGLED STATE (FOR ATOM AND PHOTON)
 
         photon.timeline = None  # facilitate cross-process exchange of photons

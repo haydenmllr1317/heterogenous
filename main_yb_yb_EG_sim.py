@@ -81,9 +81,9 @@ def main():
     # log_filename = f'pce={photon_collection_efficiency},lambda={wavelength},num_trials={n}.log'
     # log_filename = f'tmp/data/reload/reload={reload_count}.log'
     # log_filename = f'tmp/data/binwidth/width={bin_width}.log'
-    log_filename = f'tmp/data/pce/pce={photon_collection_efficiency}.log'
+    # log_filename = f'tmp/data/pce/pce={photon_collection_efficiency}.log'
     # log_filename = f'tmp/data/dc/dc={detector_dark_count}.log'
-    # log_filename = 'tmp/checking_yb.log'
+    log_filename = 'tmp/crap.log'
     log.set_logger(__name__, tl, log_filename)
     log.set_logger_level('WARNING')
     log.track_module('main_yb_yb_EG_sim')
@@ -170,7 +170,6 @@ def main():
     log.logger.warning(f'{n} entanglement pairs were generated after {node_init.get_components_by_type(MemoryArray)[0].memories[0].attempts} attempts.')
 
     # print(bsm_node.conversion_counter)
-    # print(bsm_node.qfc_noise_counter)
     # print(bsm_node.noise_to_detector)
     # print(bsm_node.detectors_got)
     # print(bsm_node.detectors_recorded)

@@ -77,7 +77,6 @@ class QFC(Entity):
 
         self.owner.conversion_counter += 1
         if self.get_generator().random() < self.noise: # noise photon added
-            self.owner.qfc_noise_counter += 1
             photon.qfc_noise_count = 1
             self._receivers[0].get(photon)
         else: # no noise photon added

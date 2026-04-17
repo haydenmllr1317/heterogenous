@@ -189,7 +189,6 @@ def main():
     log.logger.warning(f'{n} entanglement pairs were generated after {node_init.get_components_by_type(MemoryArray)[0].memories[0].attempts} attempts.')
 
     # print(bsm_node.conversion_counter)
-    # print(bsm_node.qfc_noise_counter)
     # print(bsm_node.noise_to_detector)
     # print(bsm_node.detectors_got)
     # print(bsm_node.detectors_recorded)

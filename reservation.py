@@ -24,7 +24,10 @@ from sequence.message import Message
 from sequence.protocol import StackProtocol
 from sequence.kernel.event import Event
 from sequence.kernel.process import Process
-from sequence.network_management.reservation import RSVPMsgType, ResourceReservationMessage, Reservation, MemoryTimeCard, QCap
+# from sequence.network_management.rsvp import RSVPMsgType, ResourceReservationMessage, Reservation, MemoryTimeCard, QCap
+from sequence.network_management.rsvp import RSVPMsgType, RSVPMessage, QCap
+from sequence.network_management.reservation import Reservation
+from sequence.network_management.memory_timecard import MemoryTimeCard
 
 ENTANGLED = 'ENTANGLED'
 RAW = 'RAW'
@@ -344,15 +347,15 @@ class ResourceReservationProtocol(StackProtocol):
 
         reservation = Reservation(self.owner.name, responder, start_time, end_time, memory_size, target_fidelity, entanglement_number, identity)
         if self.schedule(reservation):
-            msg = ResourceReservationMessage(RSVPMsgType.REQUEST, self.name, reservation)
+            msg = RSVPMessage(RSVPMsgType.REQUEST, self.name, reservation)
             qcap = QCap(self.owner.name)
             msg.qcaps.append(qcap)
             self._push(dst=responder, msg=msg)
         else:
-            msg = ResourceReservationMessage(RSVPMsgType.REJECT, self.name, reservation, path=[])
+            msg = RSVPMessage(RSVPMsgType.REJECT, self.name, reservation, path=[])
             self._pop(msg=msg)
 
-    def pop(self, src: str, msg: "ResourceReservationMessage"):
+    def pop(self, src: str, msg: "RSVPMessage"):
         """Method to receive messages from lower protocols.
         Messages may be of 3 types, causing different network manager behavior:
 
@@ -383,13 +386,13 @@ class ResourceReservationProtocol(StackProtocol):
                     rules = self.create_rules(path, reservation=msg.reservation)
                     self.load_rules(rules, msg.reservation)
                     msg.reservation.set_path(path)
-                    new_msg = ResourceReservationMessage(RSVPMsgType.APPROVE, self.name, msg.reservation, path=path)
+                    new_msg = RSVPMessage(RSVPMsgType.APPROVE, self.name, msg.reservation, path=path)
                     self._pop(msg=msg)
                     self._push(dst=None, msg=new_msg, next_hop=src)
                 else:
                     self._push(dst=msg.reservation.responder, msg=msg)
             else:                               # schedule failed
-                new_msg = ResourceReservationMessage(RSVPMsgType.REJECT, self.name, msg.reservation, path=path)
+                new_msg = RSVPMessage(RSVPMsgType.REJECT, self.name, msg.reservation, path=path)
                 self._push(dst=None, msg=new_msg, next_hop=src)
         elif msg.msg_type == RSVPMsgType.REJECT:
             for card in self.timecards:
